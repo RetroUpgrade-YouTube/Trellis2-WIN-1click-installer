@@ -103,7 +103,7 @@ class Mesh:
         settings.packMesh = True
         
         print('Generating Meshlib Mesh ...')
-        mesh = mrmeshnumpy.meshFromFacesVerts(faces, vertices)
+        mesh = mrmeshnumpy.meshFromFacesVerts(self.faces, self.vertices)
         print('Packing Optimally ...')
         mesh.packOptimally()
         print('Decimating ...')

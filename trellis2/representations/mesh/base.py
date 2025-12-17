@@ -4,6 +4,10 @@ from ..voxel import Voxel
 import cumesh
 from flex_gemm.ops.grid_sample import grid_sample_3d
 
+import numpy as np
+import meshlib.mrmeshnumpy as mrmeshnumpy
+import meshlib.mrmeshpy as mrmeshpy
+
 
 class Mesh:
     def __init__(self,
@@ -68,7 +72,13 @@ class Mesh:
         self.vertices = new_vertices.to(self.device)
         self.faces = new_faces.to(self.device)
         
-    def simplify(self, target=1000000, verbose: bool=False, options: dict={}):
+    def simplify_with_cumesh(self, target=1000000, verbose: bool=False, options: dict={}):        
+        current_faces_num = len(self.faces)
+        print(f'Current Faces Number: {current_faces_num}')
+        
+        if current_faces_num<target:
+            return
+        
         vertices = self.vertices.cuda()
         faces = self.faces.cuda()
         
@@ -79,6 +89,33 @@ class Mesh:
         
         self.vertices = new_vertices.to(self.device)
         self.faces = new_faces.to(self.device)
+        
+    def simplify_with_meshlib(self, target=1000000, verbose: bool=False, options: dict={}):
+        current_faces_num = len(self.faces)
+        print(f'Current Faces Number: {current_faces_num}')
+        
+        if current_faces_num<target:
+            return
+
+        settings = mrmeshpy.DecimateSettings()
+        faces_to_delete = current_faces_num - target
+        settings.maxDeletedFaces = faces_to_delete                        
+        settings.packMesh = True
+        
+        print('Generating Meshlib Mesh ...')
+        mesh = mrmeshnumpy.meshFromFacesVerts(faces, vertices)
+        print('Packing Optimally ...')
+        mesh.packOptimally()
+        print('Decimating ...')
+        mrmeshpy.decimateMesh(mesh, settings)
+        
+        new_vertices = mrmeshnumpy.getNumpyVerts(mesh)
+        new_faces = mrmeshnumpy.getNumpyFaces(mesh.topology)               
+        
+        print(f"Reduced faces, resulting in {len(new_vertices)} vertices and {len(new_faces)} faces")
+        
+        self.vertices = new_vertices.to(self.device)
+        self.faces = new_faces.to(self.device)        
 
 
 class TextureFilterMode:

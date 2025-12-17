@@ -9,6 +9,9 @@ from ..modules.sparse import SparseTensor
 from ..modules import image_feature_extractor
 from ..representations import Mesh, MeshWithVoxel
 
+import folder_paths
+import os
+
 
 class Trellis2ImageTo3DPipeline(Pipeline):
     """
@@ -92,8 +95,14 @@ class Trellis2ImageTo3DPipeline(Pipeline):
         new_pipeline.shape_slat_normalization = args['shape_slat_normalization']
         new_pipeline.tex_slat_normalization = args['tex_slat_normalization']
 
+        facebook_model_path = os.path.join(folder_paths.models_dir,"facebook","dinov3-vitl16-pretrain-lvd1689m")
+        args['image_cond_model']['args']['model_name'] = facebook_model_path
+
         new_pipeline.image_cond_model = getattr(image_feature_extractor, args['image_cond_model']['name'])(**args['image_cond_model']['args'])
-        new_pipeline.rembg_model = getattr(rembg, args['rembg_model']['name'])(**args['rembg_model']['args'])
+        
+        #new_pipeline.rembg_model = getattr(rembg, args['rembg_model']['name'])(**args['rembg_model']['args'])
+        
+        new_pipeline.rembg_model = None
         
         new_pipeline.low_vram = args.get('low_vram', True)
         new_pipeline.default_pipeline_type = args.get('default_pipeline_type', '1024_cascade')
@@ -487,7 +496,7 @@ class Trellis2ImageTo3DPipeline(Pipeline):
         sparse_structure_sampler_params: dict = {},
         shape_slat_sampler_params: dict = {},
         tex_slat_sampler_params: dict = {},
-        preprocess_image: bool = True,
+        preprocess_image: bool = False,
         return_latent: bool = False,
         pipeline_type: Optional[str] = None,
         max_num_tokens: int = 49152,

@@ -580,6 +580,8 @@ class Trellis2ImageTo3DPipeline(Pipeline):
         return_latent: bool = False,
         pipeline_type: Optional[str] = None,
         max_num_tokens: int = 49152,
+        sparse_structure_resolution: int = 32,
+        max_views: int = 4
     ) -> List[MeshWithVoxel]:
         """
         Run the pipeline.
@@ -627,12 +629,12 @@ class Trellis2ImageTo3DPipeline(Pipeline):
         torch.manual_seed(seed)
 
         # Multi-view conditioning happens inside get_cond()
-        cond_512  = self.get_cond(images, 512)
-        cond_1024 = self.get_cond(images, 1024) if pipeline_type != '512' else None
-        ss_res = {'512': 32, '1024': 32, '1024_cascade': 32, '1536_cascade': 32}[pipeline_type]
+        cond_512  = self.get_cond(images, 512, max_views = max_views)
+        cond_1024 = self.get_cond(images, 1024, max_views = max_views) if pipeline_type != '512' else None
+        #ss_res = {'512': 32, '1024': 32, '1024_cascade': 32, '1536_cascade': 32}[pipeline_type]
         
         coords = self.sample_sparse_structure(
-            cond_512, ss_res,
+            cond_512, sparse_structure_resolution,
             num_samples, sparse_structure_sampler_params
         )            
         

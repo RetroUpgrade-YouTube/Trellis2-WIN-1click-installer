@@ -204,6 +204,7 @@ class Trellis2MeshWithVoxelGenerator:
                 "texture_steps": ("INT",{"default":12, "min":1, "max":100},),
                 "max_num_tokens": ("INT",{"default":49152,"min":0,"max":999999}),
                 "max_views": ("INT", {"default": 4, "min": 1, "max": 16}),
+                "sparse_structure_resolution": ("INT", {"default":32,"min":8,"max":64,"step":8}),
             },
         }
 
@@ -213,7 +214,7 @@ class Trellis2MeshWithVoxelGenerator:
     CATEGORY = "Trellis2Wrapper"
     OUTPUT_NODE = True
 
-    def process(self, pipeline, image, seed, pipeline_type, sparse_structure_steps, shape_steps, texture_steps, max_num_tokens, max_views):
+    def process(self, pipeline, image, seed, pipeline_type, sparse_structure_steps, shape_steps, texture_steps, max_num_tokens, max_views, sparse_structure_resolution):
         images = tensor_batch_to_pil_list(image, max_views=max_views)
         image_in = images[0] if len(images) == 1 else images
         
@@ -221,7 +222,7 @@ class Trellis2MeshWithVoxelGenerator:
         shape_slat_sampler_params = {"steps":shape_steps}
         tex_slat_sampler_params = {"steps":texture_steps}
         
-        mesh = pipeline.run(image=image_in, seed=seed, pipeline_type=pipeline_type, sparse_structure_sampler_params = sparse_structure_sampler_params, shape_slat_sampler_params = shape_slat_sampler_params, tex_slat_sampler_params = tex_slat_sampler_params, max_num_tokens = max_num_tokens)[0]
+        mesh = pipeline.run(image=image_in, seed=seed, pipeline_type=pipeline_type, sparse_structure_sampler_params = sparse_structure_sampler_params, shape_slat_sampler_params = shape_slat_sampler_params, tex_slat_sampler_params = tex_slat_sampler_params, max_num_tokens = max_num_tokens, sparse_structure_resolution = sparse_structure_resolution, max_views = max_views)[0]
         
         return (mesh,)    
 
@@ -670,6 +671,7 @@ class Trellis2MeshWithVoxelAdvancedGenerator:
                 "texture_rescale_t": ("FLOAT",{"default":3.0}),                
                 "max_num_tokens": ("INT",{"default":49152,"min":0,"max":999999}),
                 "max_views": ("INT", {"default": 4, "min": 1, "max": 16}),
+                "sparse_structure_resolution": ("INT", {"default":32,"min":8,"max":64,"step":8}),
             },
         }
 
@@ -692,7 +694,8 @@ class Trellis2MeshWithVoxelAdvancedGenerator:
         texture_guidance_rescale,
         texture_rescale_t,        
         max_num_tokens,
-        max_views):
+        max_views,
+        sparse_structure_resolution):
 
         images = tensor_batch_to_pil_list(image, max_views=max_views)
         image_in = images[0] if len(images) == 1 else images
@@ -701,7 +704,7 @@ class Trellis2MeshWithVoxelAdvancedGenerator:
         shape_slat_sampler_params = {"steps":shape_steps,"guidance_strength":shape_guidance_strength,"guidance_rescale":shape_guidance_rescale,"rescale_t":shape_rescale_t}       
         tex_slat_sampler_params = {"steps":texture_steps,"guidance_strength":texture_guidance_strength,"guidance_rescale":texture_guidance_rescale,"rescale_t":texture_rescale_t}
         
-        mesh = pipeline.run(image=image_in, seed=seed, pipeline_type=pipeline_type, sparse_structure_sampler_params = sparse_structure_sampler_params, shape_slat_sampler_params = shape_slat_sampler_params, tex_slat_sampler_params = tex_slat_sampler_params, max_num_tokens = max_num_tokens)[0]         
+        mesh = pipeline.run(image=image_in, seed=seed, pipeline_type=pipeline_type, sparse_structure_sampler_params = sparse_structure_sampler_params, shape_slat_sampler_params = shape_slat_sampler_params, tex_slat_sampler_params = tex_slat_sampler_params, max_num_tokens = max_num_tokens, sparse_structure_resolution = sparse_structure_resolution, max_views = max_views)[0]         
         
         return (mesh,)    
 

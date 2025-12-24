@@ -126,14 +126,9 @@ class Trellis2ImageTo3DPipeline(Pipeline):
         pipeline.keep_models_loaded = keep_models_loaded
         pipeline.last_processing = ''
         
-        if os.name=='nt':
-            pipeline._pretrained_args['models']['sparse_structure_decoder'] = os.path.join(folder_paths.models_dir,"microsoft","TRELLIS-image-large","ckpts","ss_dec_conv3d_16l8_fp16")
-            facebook_model_path = os.path.join(folder_paths.models_dir,"facebook","dinov3-vitl16-pretrain-lvd1689m")
-            pipeline._pretrained_args['image_cond_model']['args']['model_name'] = facebook_model_path
-        else:
-            pipeline._pretrained_args['models']['sparse_structure_decoder'] = os.path.join("models","microsoft","TRELLIS-image-large","ckpts","ss_dec_conv3d_16l8_fp16")      
-            facebook_model_path = os.path.join("models","facebook","dinov3-vitl16-pretrain-lvd1689m")      
-            pipeline._pretrained_args['image_cond_model']['args']['model_name'] = facebook_model_path            
+        pipeline._pretrained_args['models']['sparse_structure_decoder'] = os.path.join(folder_paths.models_dir,"microsoft","TRELLIS-image-large","ckpts","ss_dec_conv3d_16l8_fp16")
+        facebook_model_path = os.path.join(folder_paths.models_dir,"facebook","dinov3-vitl16-pretrain-lvd1689m")
+        pipeline._pretrained_args['image_cond_model']['args']['model_name'] = facebook_model_path           
 
         return pipeline
         

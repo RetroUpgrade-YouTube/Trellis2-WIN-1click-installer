@@ -829,6 +829,7 @@ class Trellis2PostProcessAndUnWrapAndRasterizer:
             else:
                 resolution = int(dual_contouring_resolution)
             
+            print('Performing Dual Contouring ...')
             # Perform Dual Contouring remeshing (rebuilds topology)
             cumesh.init(*CuMesh.remeshing.remesh_narrow_band_dc(
                 vertices, faces,
@@ -1059,6 +1060,7 @@ class Trellis2Remesh:
         else:
             resolution = int(dual_contouring_resolution)
         
+        print('Performing Dual Contouring ...')
         # Perform Dual Contouring remeshing (rebuilds topology)
         cumesh.init(*CuMesh.remeshing.remesh_narrow_band_dc(
             vertices, faces,

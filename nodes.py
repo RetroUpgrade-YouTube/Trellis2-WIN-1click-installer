@@ -15,6 +15,8 @@ import cv2
 import gc
 import copy
 
+import pymeshlab
+
 import cumesh as CuMesh
 
 import meshlib.mrmeshnumpy as mrmeshnumpy
@@ -110,6 +112,35 @@ def simplify_with_meshlib(vertices, faces, target=1000000):
     print(f"Reduced faces, resulting in {len(new_vertices)} vertices and {len(new_faces)} faces")
         
     return new_vertices, new_faces
+
+def remove_floater(mesh):
+    print('Removing floater ...')
+    faces = mesh.faces.cpu().numpy()
+    print(f"Current faces: {len(faces)}")
+    mesh_set = pymeshlab.MeshSet()
+    mesh_pymeshlab = pymeshlab.Mesh(vertex_matrix=mesh.vertices.cpu().numpy(), face_matrix=faces)
+    mesh_set.add_mesh(mesh_pymeshlab, "converted_mesh")
+    mesh_set = pymeshlab_remove_floater(mesh_set)
+    
+    mesh_pymeshlab = mesh_set.current_mesh()    
+    
+    new_faces = mesh_pymeshlab.face_matrix()
+    print(f"After removing floater: {len(new_faces)}")
+    
+    new_vertices = torch.from_numpy(mesh_pymeshlab.vertex_matrix()).contiguous().float()
+    new_faces = torch.from_numpy(new_faces).contiguous().int()   
+    
+    mesh.vertices = new_vertices
+    mesh.faces = new_faces
+    
+    return mesh
+    
+def pymeshlab_remove_floater(mesh: pymeshlab.MeshSet):
+    mesh.apply_filter("compute_selection_by_small_disconnected_components_per_face",
+                      nbfaceratio=0.005)
+    mesh.apply_filter("compute_selection_transfer_face_to_vertex", inclusive=False)
+    mesh.apply_filter("meshing_remove_selected_vertices_and_faces")
+    return mesh 
 
 class Trellis2LoadModel:
     @classmethod
@@ -395,11 +426,11 @@ class Trellis2ExportMesh:
         output_glb_path = Path(full_output_folder, f'{filename}_{counter:05}_.{file_format}')
         output_glb_path.parent.mkdir(exist_ok=True)
         if save_file:
-            trimesh.export(output_glb_path, file_type=file_format)
+            trimesh.export(output_glb_path, file_type=file_format, include_normals=True)
             relative_path = Path(subfolder) / f'{filename}_{counter:05}_.{file_format}'
         else:
             temp_file = Path(full_output_folder, f'hy3dtemp_.{file_format}')
-            trimesh.export(temp_file, file_type=file_format)
+            trimesh.export(temp_file, file_type=file_format,include_normals=True)
             relative_path = Path(subfolder) / f'hy3dtemp_.{file_format}'
         
         return (str(relative_path), )        
@@ -409,7 +440,7 @@ class Trellis2PostProcessMesh:
     def INPUT_TYPES(s):
         return {
             "required": {
-                "mesh": ("MESHWITHVOXEL",),
+                "mesh": ("MESHWITHVOXEL",),                
                 "fill_holes": ("BOOLEAN", {"default":True}),
                 "fill_holes_max_perimeter": ("FLOAT",{"default":0.03,"min":0.001,"max":99.999,"step":0.001}),
                 "remove_duplicate_faces": ("BOOLEAN",{"default":True}),
@@ -418,6 +449,7 @@ class Trellis2PostProcessMesh:
                 "remove_small_connected_components": ("BOOLEAN", {"default":True}),
                 "remove_small_connected_components_size": ("FLOAT", {"default":0.00001,"min":0.00001,"max":9.99999,"step":0.00001}),
                 "unify_faces_orientation": ("BOOLEAN", {"default":True}),
+                "remove_floaters": ("BOOLEAN",{"default":True}),
             },
         }
 
@@ -427,9 +459,12 @@ class Trellis2PostProcessMesh:
     CATEGORY = "Trellis2Wrapper"
     OUTPUT_NODE = True
 
-    def process(self, mesh, fill_holes, fill_holes_max_perimeter, remove_duplicate_faces, repair_non_manifold_edges, remove_non_manifold_faces, remove_small_connected_components, remove_small_connected_components_size,unify_faces_orientation):
+    def process(self, mesh, fill_holes, fill_holes_max_perimeter, remove_duplicate_faces, repair_non_manifold_edges, remove_non_manifold_faces, remove_small_connected_components, remove_small_connected_components_size,unify_faces_orientation,remove_floaters):
         mesh_copy = copy.deepcopy(mesh)
-        
+
+        if remove_floaters:
+            mesh_copy = remove_floater(mesh_copy)
+
         vertices = mesh_copy.vertices
         faces = mesh_copy.faces
 
@@ -742,17 +777,18 @@ class Trellis2PostProcessAndUnWrapAndRasterizer:
                 "mesh_cluster_refine_iterations": ("INT",{"default":0}),
                 "mesh_cluster_global_iterations": ("INT",{"default":1}),
                 "mesh_cluster_smooth_strength": ("INT",{"default":1}),                
-                "texture_size": ("INT",{"default":1024, "min":512, "max":16384}),
+                "texture_size": ("INT",{"default":2048, "min":512, "max":16384}),
                 "remesh": ("BOOLEAN",{"default":True}),
                 "remesh_band": ("FLOAT",{"default":1.0}),
                 "remesh_project": ("FLOAT",{"default":0.0}),
-                "target_face_num": ("INT",{"default":1000000,"min":1,"max":16000000}),
+                "target_face_num": ("INT",{"default":2000000,"min":1,"max":16000000}),
                 "simplify_method": (["Cumesh","Meshlib"],{"default":"Cumesh"}),
                 "fill_holes": ("BOOLEAN", {"default":True}),
                 "fill_holes_max_perimeter": ("FLOAT",{"default":0.03,"min":0.001,"max":99.999,"step":0.001}),
                 "texture_alpha_mode": (["OPAQUE","MASK","BLEND"],{"default":"OPAQUE"}),
-                "dual_contouring_resolution": (["Auto","128","256","512","1024","2048"],{"default":"Auto"}),
+                "dual_contouring_resolution": (["Auto","128","256","512","1024","2048"],{"default":"512"}),
                 "double_side_material": ("BOOLEAN",{"default":True}),
+                "remove_floaters": ("BOOLEAN",{"default":True}),
             },
         }
 
@@ -762,13 +798,11 @@ class Trellis2PostProcessAndUnWrapAndRasterizer:
     CATEGORY = "Trellis2Wrapper"
     OUTPUT_NODE = True
 
-    def process(self, mesh, mesh_cluster_threshold_cone_half_angle_rad, mesh_cluster_refine_iterations, mesh_cluster_global_iterations, mesh_cluster_smooth_strength, texture_size, remesh, remesh_band, remesh_project, target_face_num, simplify_method, fill_holes, fill_holes_max_perimeter, texture_alpha_mode, dual_contouring_resolution, double_side_material):
+    def process(self, mesh, mesh_cluster_threshold_cone_half_angle_rad, mesh_cluster_refine_iterations, mesh_cluster_global_iterations, mesh_cluster_smooth_strength, texture_size, remesh, remesh_band, remesh_project, target_face_num, simplify_method, fill_holes, fill_holes_max_perimeter, texture_alpha_mode, dual_contouring_resolution, double_side_material,remove_floaters):
         mesh_copy = copy.deepcopy(mesh)
         
         aabb = [[-0.5, -0.5, -0.5], [0.5, 0.5, 0.5]]
         
-        vertices = mesh_copy.vertices
-        faces = mesh_copy.faces
         attr_volume = mesh_copy.attrs
         coords = mesh_copy.coords
         attr_layout = mesh_copy.layout
@@ -798,9 +832,13 @@ class Trellis2PostProcessAndUnWrapAndRasterizer:
                 grid_size = np.array(grid_size)
             if isinstance(grid_size, np.ndarray):
                 grid_size = torch.tensor(grid_size, dtype=torch.int32, device=coords.device)
-            voxel_size = (aabb[1] - aabb[0]) / grid_size       
+            voxel_size = (aabb[1] - aabb[0]) / grid_size
         
-            print(f"Original mesh: {vertices.shape[0]} vertices, {faces.shape[0]} faces")        
+        if remove_floaters:
+            mesh_copy = remove_floater(mesh_copy)
+            
+        vertices = mesh_copy.vertices
+        faces = mesh_copy.faces
         
         vertices = vertices.cuda()
         faces = faces.cuda()                

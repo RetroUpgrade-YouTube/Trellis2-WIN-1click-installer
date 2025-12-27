@@ -851,7 +851,7 @@ class Trellis2PostProcessAndUnWrapAndRasterizer:
             cumesh.init(*CuMesh.remeshing.remesh_narrow_band_dc(
                 vertices, faces,
                 center = center,
-                scale = (resolution + 3 * remesh_band) / resolution * scale,
+                scale = 1.0, # old calculation : (resolution + 3 * remesh_band) / resolution * scale,
                 resolution = resolution,
                 band = remesh_band,
                 project_back = remesh_project, # Snaps vertices back to original surface
@@ -1084,7 +1084,7 @@ class Trellis2Remesh:
         cumesh.init(*CuMesh.remeshing.remesh_narrow_band_dc(
             vertices, faces,
             center = center,
-            scale = (resolution + 3 * remesh_band) / resolution * scale,
+            scale = 1.0, # old calculation (resolution + 3 * remesh_band) / resolution * scale,
             resolution = resolution,
             band = remesh_band,
             project_back = remesh_project, # Snaps vertices back to original surface
@@ -1095,7 +1095,7 @@ class Trellis2Remesh:
         print(f"After remeshing: {cumesh.num_vertices} vertices, {cumesh.num_faces} faces")                          
         
         # Step 2: Unify face orientations
-        #cumesh.unify_face_orientations()        
+        cumesh.unify_face_orientations()        
         
         new_vertices, new_faces = cumesh.read()
         

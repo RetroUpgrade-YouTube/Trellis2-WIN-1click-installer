@@ -1222,7 +1222,57 @@ class Trellis2PreProcessImage:
         output = np.array(output).astype(np.float32) / 255
         output = output[:, :, :3] * output[:, :, 3:4]
         output = Image.fromarray((output * 255).astype(np.uint8))
-        return output        
+        return output    
+
+class Trellis2MeshRefiner:
+    @classmethod
+    def INPUT_TYPES(s):
+        return {
+            "required": {
+                "pipeline": ("TRELLIS2PIPELINE",),
+                "trimesh": ("TRIMESH",),
+                "image": ("IMAGE",),
+                "seed": ("INT", {"default": 0, "min": 0, "max": 0x7fffffff}),
+                "resolution": ([512,1024,1536],{"default":1024}),
+                "shape_steps": ("INT",{"default":12, "min":1, "max":100},),
+                "shape_guidance_strength": ("FLOAT",{"default":7.5}),
+                "shape_guidance_rescale": ("FLOAT",{"default":0.5}),
+                "shape_rescale_t": ("FLOAT",{"default":3.0}),                
+                "texture_steps": ("INT",{"default":12, "min":1, "max":100},),
+                "texture_guidance_strength": ("FLOAT",{"default":1.0}),
+                "texture_guidance_rescale": ("FLOAT",{"default":0.0}),
+                "texture_rescale_t": ("FLOAT",{"default":3.0}),                
+                "max_num_tokens": ("INT",{"default":49152,"min":0,"max":999999}),
+                "generate_texture_slat": ("BOOLEAN", {"default":True}),
+            },
+        }
+
+    RETURN_TYPES = ("MESHWITHVOXEL", )
+    RETURN_NAMES = ("mesh", )
+    FUNCTION = "process"
+    CATEGORY = "Trellis2Wrapper"
+    OUTPUT_NODE = True
+
+    def process(self, pipeline, trimesh, image, seed, resolution,
+        shape_steps, 
+        shape_guidance_strength, 
+        shape_guidance_rescale,
+        shape_rescale_t,        
+        texture_steps, 
+        texture_guidance_strength, 
+        texture_guidance_rescale,
+        texture_rescale_t,        
+        max_num_tokens,
+        generate_texture_slat):
+
+        image = tensor2pil(image)
+        
+        shape_slat_sampler_params = {"steps":shape_steps,"guidance_strength":shape_guidance_strength,"guidance_rescale":shape_guidance_rescale,"rescale_t":shape_rescale_t}       
+        tex_slat_sampler_params = {"steps":texture_steps,"guidance_strength":texture_guidance_strength,"guidance_rescale":texture_guidance_rescale,"rescale_t":texture_rescale_t}
+        
+        mesh = pipeline.refine_mesh(mesh = trimesh, image=image, seed=seed, shape_slat_sampler_params = shape_slat_sampler_params, tex_slat_sampler_params = tex_slat_sampler_params, resolution = resolution, max_num_tokens = max_num_tokens, generate_texture_slat=generate_texture_slat)[0]         
+        
+        return (mesh,)           
 
 NODE_CLASS_MAPPINGS = {
     "Trellis2LoadModel": Trellis2LoadModel,
@@ -1239,6 +1289,7 @@ NODE_CLASS_MAPPINGS = {
     "Trellis2MeshTexturing": Trellis2MeshTexturing,
     "Trellis2LoadMesh": Trellis2LoadMesh,
     "Trellis2PreProcessImage": Trellis2PreProcessImage,
+    "Trellis2MeshRefiner": Trellis2MeshRefiner,
     }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
@@ -1256,4 +1307,5 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "Trellis2MeshTexturing": "Trellis2 - Mesh Texturing",
     "Trellis2LoadMesh": "Trellis2 - Load Mesh",
     "Trellis2PreProcessImage": "Trellis2 - PreProcess Image",
+    "Trellis2MeshRefiner": "Trellis2 - Mesh Refiner",
     }

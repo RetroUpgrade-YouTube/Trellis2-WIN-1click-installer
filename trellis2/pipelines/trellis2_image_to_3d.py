@@ -1207,3 +1207,218 @@ class Trellis2ImageTo3DPipeline(Pipeline):
         
         out_mesh, baseColorTexture, metallicRoughnessTexture = self.postprocess_mesh(mesh, pbr_voxel, resolution, texture_size, texture_alpha_mode, double_side_material)
         return out_mesh, baseColorTexture, metallicRoughnessTexture
+    
+    def get_coords_from_trimesh(self, mesh, resolution):
+        vertices = torch.from_numpy(mesh.vertices).float()
+        faces = torch.from_numpy(mesh.faces).long()
+        
+        voxel_indices, dual_vertices, intersected = o_voxel.convert.mesh_to_flexible_dual_grid(
+            vertices.cpu(), faces.cpu(),
+            grid_size=resolution,
+            aabb=[[-0.5,-0.5,-0.5],[0.5,0.5,0.5]],
+            face_weight=1.0,
+            boundary_weight=0.2,
+            regularization_weight=1e-2,
+            timing=True,
+        )
+        
+        coords = torch.cat([torch.zeros_like(voxel_indices[:, 0:1]), voxel_indices], dim=-1)                
+        coords = coords.cpu()
+        
+        print(coords)
+        
+        del voxel_indices
+        del dual_vertices
+        del intersected
+        
+        if self.low_vram:
+            self._cleanup_cuda() 
+        
+        return coords;
+        
+    def sample_mesh_slat(
+        self,
+        mesh_slat,
+        cond: dict,
+        flow_model,
+        resolution: int,
+        sampler_params: dict = {},
+        max_num_tokens: int = 49152,
+    ) -> SparseTensor:
+        # Upsample       
+        self.load_shape_slat_decoder()
+        if self.low_vram:
+            self.models['shape_slat_decoder'].to(self.device)
+            self.models['shape_slat_decoder'].low_vram = True
+        hr_coords = self.models['shape_slat_decoder'].upsample(mesh_slat, upsample_times=4)
+        if self.low_vram:
+            self.models['shape_slat_decoder'].cpu()
+            self.models['shape_slat_decoder'].low_vram = False
+        hr_resolution = resolution
+        
+        if not self.keep_models_loaded:
+            self.unload_shape_slat_decoder()
+        
+        while True:
+            quant_coords = torch.cat([
+                hr_coords[:, :1],
+                ((hr_coords[:, 1:] + 0.5) / hr_resolution * (hr_resolution // 16)).int(),
+            ], dim=1)
+            coords = quant_coords.unique(dim=0)
+            num_tokens = coords.shape[0]
+            if num_tokens < max_num_tokens or hr_resolution == 1024:
+                if hr_resolution != resolution:
+                    print(f"Due to the limited number of tokens, the resolution is reduced to {hr_resolution}.")
+                break
+            hr_resolution -= 128
+        
+        coords_dev = coords.to(self.device)                                           
+        # Sample structured latent
+        noise = SparseTensor(
+            feats=torch.randn(coords.shape[0], flow_model.in_channels, device=self.device),
+            coords=coords_dev,
+        )
+        sampler_params = {**self.shape_slat_sampler_params, **sampler_params}
+        if self.low_vram:
+            flow_model.to(self.device)
+        slat = self.shape_slat_sampler.sample(
+            flow_model,
+            noise,
+            **cond,
+            **sampler_params,
+            verbose=True,
+            tqdm_desc="Sampling shape SLat",
+        ).samples
+        if self.low_vram:
+            flow_model.cpu()
+            self._cleanup_cuda()                                
+
+        std = torch.tensor(self.shape_slat_normalization['std'])[None].to(slat.device)
+        mean = torch.tensor(self.shape_slat_normalization['mean'])[None].to(slat.device)
+        slat = slat * std + mean
+        
+        del coords_dev
+        if self.low_vram:
+            cond = self._cond_cpu(cond)
+            self._cleanup_cuda()
+
+        return slat, hr_resolution        
+    
+    @torch.no_grad()
+    def refine_mesh(
+        self,
+        mesh: trimesh.Trimesh,
+        image: Image.Image,
+        seed: int = 42,
+        shape_slat_sampler_params: dict = {},
+        tex_slat_sampler_params: dict = {},
+        resolution: int = 1024,
+        max_num_tokens = 50000,
+        generate_texture_slat = True,
+        return_latent = False
+    ):
+        mesh = self.preprocess_mesh(mesh)
+        torch.manual_seed(seed)
+        
+        self.load_image_cond_model()
+        
+        if resolution == 512:
+            cond = self.get_cond(image, 512)
+        else:
+            cond = self.get_cond(image, 1024)
+        
+        if not self.keep_models_loaded:
+            self.unload_image_cond_model()        
+        
+        mesh_slat = self.encode_shape_slat(mesh, resolution)
+        
+        if resolution==512:
+            self.unload_shape_slat_flow_model_1024()
+            self.load_shape_slat_flow_model_512()            
+            shape_slat, res = self.sample_mesh_slat(
+                mesh_slat,
+                cond,
+                self.models['shape_slat_flow_model_512'],
+                512,
+                shape_slat_sampler_params,
+                max_num_tokens
+            )
+            
+            if not self.keep_models_loaded:
+                self.unload_shape_slat_flow_model_512()
+            
+            if generate_texture_slat:
+                self.unload_tex_slat_flow_model_1024()
+                self.load_tex_slat_flow_model_512()
+                tex_slat = self.sample_tex_slat(
+                    cond, self.models['tex_slat_flow_model_512'],
+                    shape_slat, tex_slat_sampler_params
+                )
+            
+            if not self.keep_models_loaded:
+                self.unload_tex_slat_flow_model_512()                
+        elif resolution == 1024:
+            self.unload_shape_slat_flow_model_512()
+            self.load_shape_slat_flow_model_1024()            
+            shape_slat, res = self.sample_mesh_slat(
+                mesh_slat,
+                cond,
+                self.models['shape_slat_flow_model_1024'],
+                1024,
+                shape_slat_sampler_params,
+                max_num_tokens
+            )
+            
+            if not self.keep_models_loaded:
+                self.unload_shape_slat_flow_model_1024()
+            
+            if generate_texture_slat:
+                self.unload_tex_slat_flow_model_512()
+                self.load_tex_slat_flow_model_1024()
+                tex_slat = self.sample_tex_slat(
+                    cond, self.models['tex_slat_flow_model_1024'],
+                    shape_slat, tex_slat_sampler_params
+                )
+            
+            if not self.keep_models_loaded:
+                self.unload_tex_slat_flow_model_1024()
+        elif resolution == 1536:
+            self.unload_shape_slat_flow_model_512()
+            self.load_shape_slat_flow_model_1024()            
+            shape_slat, res = self.sample_mesh_slat(
+                mesh_slat,
+                cond,
+                self.models['shape_slat_flow_model_1024'],
+                1536,
+                shape_slat_sampler_params,
+                max_num_tokens
+            )
+            
+            if not self.keep_models_loaded:
+                self.unload_shape_slat_flow_model_1024()
+            
+            if generate_texture_slat:
+                self.unload_tex_slat_flow_model_512()
+                self.load_tex_slat_flow_model_1024()
+                tex_slat = self.sample_tex_slat(
+                    cond, self.models['tex_slat_flow_model_1024'],
+                    shape_slat, tex_slat_sampler_params
+                )
+            
+            if not self.keep_models_loaded:
+                self.unload_tex_slat_flow_model_1024()                 
+                
+        torch.cuda.empty_cache()
+        if generate_texture_slat:
+            out_mesh = self.decode_latent(shape_slat, tex_slat, res)
+        else:
+            out_mesh = self.decode_latent(shape_slat, None, res)
+        torch.cuda.empty_cache()
+        
+        if return_latent:
+            if generate_texture_slat:
+                return out_mesh, (shape_slat, tex_slat, res)
+            else:
+                return out_mesh, (shape_slat, None, res)
+        else:
+            return out_mesh      

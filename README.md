@@ -38,7 +38,7 @@ So in ComfyUI/models/facebook/dinov3-vitl16-pretrain-lvd1689m
 
 > Tested on **Windows 11** with **Python 3.11** and **Torch = 2.7.0 + cu128**.
 
-### 1. Install Wheel
+### 1. Install Wheels
 
 #### For a standard python environment:
 
@@ -85,3 +85,19 @@ python_embeded\python.exe -m pip install ComfyUI\custom_nodes\ComfyUI-Trellis2\w
 ---
 
 **Check the folder wheels for the other versions**
+
+### 2. Requirements.txt
+
+#### For a standard python environment:
+
+```bash
+python -m pip install -r ComfyUI/custom_nodes/ComfyUI-Trellis2/requirements.txt
+```
+
+---
+
+#### For ComfyUI Portable:
+
+```bash
+python_embeded\python.exe -m pip install -r ComfyUI\custom_nodes\ComfyUI-Trellis2\requirements.txt
+```

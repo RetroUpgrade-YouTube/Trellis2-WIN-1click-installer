@@ -1,30 +1,36 @@
-# 🌀 ComfyUI Wrapper for [https://github.com/Tencent-Hunyuan/HY-Motion-1.0](https://github.com/Tencent-Hunyuan/HY-Motion-1.0)
+# 🌀 ComfyUI Wrapper for [https://github.com/microsoft/TRELLIS.2](https://github.com/microsoft/TRELLIS.2)
 
 ---
 
-<img width="1151" height="374" alt="{D0EC5C97-9B7D-4035-98A9-E33326E7B305}" src="https://github.com/user-attachments/assets/d0757491-5106-413c-9dc6-842cfeee31bd" />
+<img width="883" height="566" alt="{09272892-57D6-4EB8-B27B-6B875916982A}" src="https://github.com/user-attachments/assets/a7788f13-141c-4072-9143-b8b1ee1ead2a" />
+
+---
+
+<img width="980" height="579" alt="{F6FE6B7B-94B7-44C6-8C89-02E7C81EBF7E}" src="https://github.com/user-attachments/assets/ad27111c-beb8-48ef-8613-c533a3a5cacd" />
+
+---
+
+## WARNING ##
+
+Many users reported that their is a bug with mesh generation like on this picture:
+<img width="666" height="752" alt="image" src="https://github.com/user-attachments/assets/ce11c61d-a1c2-40c9-a698-b6330dd19953" />
+
+I don't know yet where is the bug, but I found that it occurs when a parameter is changed in the node "Mesh With Voxel ..."
+
+I believe there is a bug with ComfyUI caching system, but I'm not sure.
+
+The only solution for the moment, is to restart ComfyUI.
 
 ---
 ## REQUIREMENTS ##
 
-You need to download first these models:
-- clip-vit-large-patch14: [https://huggingface.co/openai/clip-vit-large-patch14/tree/main](https://huggingface.co/openai/clip-vit-large-patch14/tree/main)
-- Qwen3-8B: [https://huggingface.co/Qwen/Qwen3-8B/tree/main](https://huggingface.co/Qwen/Qwen3-8B/tree/main)
-- HY-Motion-1.0: [https://huggingface.co/tencent/HY-Motion-1.0/tree/main](https://huggingface.co/tencent/HY-Motion-1.0/tree/main)
+You need to have access to facebook dinov3 models in order to use Trellis.2
 
-And save them in the folder "ComfyUI/models/HY-Motion/ckpts/"
+[https://huggingface.co/facebook/dinov3-vitl16-pretrain-lvd1689m](https://huggingface.co/facebook/dinov3-vitl16-pretrain-lvd1689m)
 
-So you must have a folder structure like this:
+Clone the repository in ComfyUI models folder under "facebook/dinov3-vitl16-pretrain-lvd1689m"
 
-```
-HY-Motion/
-  |──ckpts/
-      ├── tencent/
-      │   ├── HY-Motion-1.0/          # Contains config.yml and latest.ckpt
-      │   └── HY-Motion-1.0-Lite/     # Optional
-      ├── clip-vit-large-patch14/     # CLIP weights
-      ├── Qwen3-8B/                   # Qwen text encoder weights
-```
+So in ComfyUI/models/facebook/dinov3-vitl16-pretrain-lvd1689m
 
 ---
 
@@ -32,12 +38,60 @@ HY-Motion/
 
 > Tested on **Windows 11** with **Python 3.11** and **Torch = 2.7.0 + cu128**.
 
-### 1. Install Requirements.txt file
+### 1. Install Wheels
+
+#### For a standard python environment:
+
+**If you use Torch v2.7.0:**
+```bash
+python -m pip install ComfyUI/custom_nodes/ComfyUI-Trellis2/wheels/Windows/Torch270/cumesh-0.0.1-cp311-cp311-win_amd64.whl
+python -m pip install ComfyUI/custom_nodes/ComfyUI-Trellis2/wheels/Windows/Torch270/nvdiffrast-0.4.0-cp311-cp311-win_amd64.whl
+python -m pip install ComfyUI/custom_nodes/ComfyUI-Trellis2/wheels/Windows/Torch270/nvdiffrec_render-0.0.0-cp311-cp311-win_amd64.whl
+python -m pip install ComfyUI/custom_nodes/ComfyUI-Trellis2/wheels/Windows/Torch270/flex_gemm-0.0.1-cp311-cp311-win_amd64.whl
+python -m pip install ComfyUI/custom_nodes/ComfyUI-Trellis2/wheels/Windows/Torch270/o_voxel-0.0.1-cp311-cp311-win_amd64.whl
+```
+
+**If you use Torch v2.8.0:**
+```bash
+python -m pip install ComfyUI/custom_nodes/ComfyUI-Trellis2/wheels/Windows/Torch280/cumesh-0.0.1-cp311-cp311-win_amd64.whl
+python -m pip install ComfyUI/custom_nodes/ComfyUI-Trellis2/wheels/Windows/Torch280/nvdiffrast-0.4.0-cp311-cp311-win_amd64.whl
+python -m pip install ComfyUI/custom_nodes/ComfyUI-Trellis2/wheels/Windows/Torch280/nvdiffrec_render-0.0.0-cp311-cp311-win_amd64.whl
+python -m pip install ComfyUI/custom_nodes/ComfyUI-Trellis2/wheels/Windows/Torch280/flex_gemm-0.0.1-cp311-cp311-win_amd64.whl
+python -m pip install ComfyUI/custom_nodes/ComfyUI-Trellis2/wheels/Windows/Torch280/o_voxel-0.0.1-cp311-cp311-win_amd64.whl
+```
+
+---
+
+#### For ComfyUI Portable:
+
+**If you use Torch v2.7.0:**
+```bash
+python_embeded\python.exe -m pip install ComfyUI\custom_nodes\ComfyUI-Trellis2\wheels\Windows\Torch270\cumesh-0.0.1-cp311-cp311-win_amd64.whl
+python_embeded\python.exe -m pip install ComfyUI\custom_nodes\ComfyUI-Trellis2\wheels\Windows\Torch270\nvdiffrast-0.4.0-cp311-cp311-win_amd64.whl
+python_embeded\python.exe -m pip install ComfyUI\custom_nodes\ComfyUI-Trellis2\wheels\Windows\Torch270\nvdiffrec_render-0.0.0-cp311-cp311-win_amd64.whl
+python_embeded\python.exe -m pip install ComfyUI\custom_nodes\ComfyUI-Trellis2\wheels\Windows\Torch270\flex_gemm-0.0.1-cp311-cp311-win_amd64.whl
+python_embeded\python.exe -m pip install ComfyUI\custom_nodes\ComfyUI-Trellis2\wheels\Windows\Torch270\o_voxel-0.0.1-cp311-cp311-win_amd64.whl
+```
+
+**If you use Torch v2.8.0:**
+```bash
+python_embeded\python.exe -m pip install ComfyUI\custom_nodes\ComfyUI-Trellis2\wheels\Windows\Torch280\cumesh-0.0.1-cp311-cp311-win_amd64.whl
+python_embeded\python.exe -m pip install ComfyUI\custom_nodes\ComfyUI-Trellis2\wheels\Windows\Torch280\nvdiffrast-0.4.0-cp311-cp311-win_amd64.whl
+python_embeded\python.exe -m pip install ComfyUI\custom_nodes\ComfyUI-Trellis2\wheels\Windows\Torch280\nvdiffrec_render-0.0.0-cp311-cp311-win_amd64.whl
+python_embeded\python.exe -m pip install ComfyUI\custom_nodes\ComfyUI-Trellis2\wheels\Windows\Torch280\flex_gemm-0.0.1-cp311-cp311-win_amd64.whl
+python_embeded\python.exe -m pip install ComfyUI\custom_nodes\ComfyUI-Trellis2\wheels\Windows\Torch280\o_voxel-0.0.1-cp311-cp311-win_amd64.whl
+```
+
+---
+
+**Check the folder wheels for the other versions**
+
+### 2. Requirements.txt
 
 #### For a standard python environment:
 
 ```bash
-python -m pip install -r ComfyUI/custom_nodes/ComfyUI-HY-Motion/requirements.txt
+python -m pip install -r ComfyUI/custom_nodes/ComfyUI-Trellis2/requirements.txt
 ```
 
 ---
@@ -45,5 +99,5 @@ python -m pip install -r ComfyUI/custom_nodes/ComfyUI-HY-Motion/requirements.txt
 #### For ComfyUI Portable:
 
 ```bash
-python_embeded\python.exe -m pip install -r ComfyUI\custom_nodes\ComfyUI-HY-Motion\requirements.txt
+python_embeded\python.exe -m pip install -r ComfyUI\custom_nodes\ComfyUI-Trellis2\requirements.txt
 ```

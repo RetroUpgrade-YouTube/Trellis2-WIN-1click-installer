@@ -23,7 +23,6 @@ import flex_gemm
 
 from comfy.utils import ProgressBar
 
-
 class Trellis2ImageTo3DPipeline(Pipeline):
     """
     Pipeline for inferring Trellis2 image-to-3D models.
@@ -685,6 +684,7 @@ class Trellis2ImageTo3DPipeline(Pipeline):
         if self.low_vram:
             self.models['shape_slat_decoder'].cpu()
             self.models['shape_slat_decoder'].low_vram = False
+            torch.cuda.empty_cache()                        
         
         if not self.keep_models_loaded:        
             self.unload_shape_slat_decoder()
@@ -759,6 +759,7 @@ class Trellis2ImageTo3DPipeline(Pipeline):
         
         if self.low_vram:
             self.models['tex_slat_decoder'].to(self.device)
+            self.models['tex_slat_decoder'].low_vram = True                                               
             
         if subs is None:
             ret = self.models['tex_slat_decoder'](slat) * 0.5 + 0.5
@@ -767,6 +768,8 @@ class Trellis2ImageTo3DPipeline(Pipeline):
             
         if self.low_vram:
             self.models['tex_slat_decoder'].cpu()
+            self.models['tex_slat_decoder'].low_vram = False
+            torch.cuda.empty_cache()                                                            
         
         if not self.keep_models_loaded:
             self.unload_tex_slat_decoder()
@@ -1111,6 +1114,7 @@ class Trellis2ImageTo3DPipeline(Pipeline):
         else:
             out_mesh = self.decode_latent(shape_slat, None, res)
         torch.cuda.empty_cache()
+        pbar.update(1)              
         if return_latent:
             if generate_texture_slat:
                 return out_mesh, (shape_slat, tex_slat, res)

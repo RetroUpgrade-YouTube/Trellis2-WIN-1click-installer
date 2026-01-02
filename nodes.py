@@ -394,7 +394,7 @@ class Trellis2SimplifyMesh:
         return {
             "required": {
                 "mesh": ("MESHWITHVOXEL",),
-                "target_face_num": ("INT",{"default":1000000,"min":1,"max":16000000}),
+                "target_face_num": ("INT",{"default":1000000,"min":1,"max":30000000}),
                 "method": (["Cumesh","Meshlib"],{"default":"Cumesh"}),
             },
         }
@@ -822,9 +822,9 @@ class Trellis2MeshWithVoxelAdvancedGenerator:
         tex_slat_sampler_params = {"steps":texture_steps,"guidance_strength":texture_guidance_strength,"guidance_rescale":texture_guidance_rescale,"guidance_interval":texture_guidance_interval,"rescale_t":texture_rescale_t}
             
         if generate_texture_slat:
-            num_steps = 4
+            num_steps = 5
         else:
-            num_steps = 3
+            num_steps = 4
 
         pbar = ProgressBar(num_steps)
         

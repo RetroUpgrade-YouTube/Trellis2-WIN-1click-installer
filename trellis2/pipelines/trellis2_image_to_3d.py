@@ -80,7 +80,7 @@ class Trellis2ImageTo3DPipeline(Pipeline):
         self.tex_slat_normalization = tex_slat_normalization
         self.image_cond_model = image_cond_model
         self.rembg_model = rembg_model
-        self.low_vram = low_vram
+        self._low_vram = low_vram
         self.default_pipeline_type = default_pipeline_type
         self.pbr_attr_layout = {
             'base_color': slice(0, 3),
@@ -89,6 +89,19 @@ class Trellis2ImageTo3DPipeline(Pipeline):
             'alpha': slice(5, 6),
         }
         self._device = 'cpu'
+
+    @property
+    def low_vram(self) -> bool:
+        return self._low_vram
+
+    @low_vram.setter
+    def low_vram(self, value: bool):
+        self._low_vram = value
+        for m in self.models.values():
+            if hasattr(m, 'low_vram'):
+                m.low_vram = value
+        if hasattr(self, 'image_cond_model') and hasattr(self.image_cond_model, 'low_vram'):
+            self.image_cond_model.low_vram = value
 
     def _cond_to(self, cond: dict, device: torch.device) -> dict:
         # Move only tensors; keep other items unchanged
@@ -162,6 +175,8 @@ class Trellis2ImageTo3DPipeline(Pipeline):
             self.models['sparse_structure_decoder'] = models.from_pretrained(self._pretrained_args['models']['sparse_structure_decoder'])
             self.models['sparse_structure_decoder'].eval()        
             self.models['sparse_structure_decoder'].to(self._device)
+            if hasattr(self.models['sparse_structure_decoder'], 'low_vram'):
+                self.models['sparse_structure_decoder'].low_vram = self.low_vram
     
     def unload_sparse_structure_model(self):
         if self.models['sparse_structure_flow_model']:
@@ -218,6 +233,8 @@ class Trellis2ImageTo3DPipeline(Pipeline):
             self.models['tex_slat_decoder'] = models.from_pretrained(f"{self.path}/{self._pretrained_args['models']['tex_slat_decoder']}")
             self.models['tex_slat_decoder'].eval()
             self.models['tex_slat_decoder'].to(self._device)
+            if hasattr(self.models['tex_slat_decoder'], 'low_vram'):
+                self.models['tex_slat_decoder'].low_vram = self.low_vram
 
     def unload_tex_slat_decoder(self):
         if self.models['tex_slat_decoder'] is not None:
@@ -231,6 +248,8 @@ class Trellis2ImageTo3DPipeline(Pipeline):
             self.models['shape_slat_decoder'] = models.from_pretrained(f"{self.path}/{self._pretrained_args['models']['shape_slat_decoder']}")
             self.models['shape_slat_decoder'].eval()
             self.models['shape_slat_decoder'].to(self._device)
+            if hasattr(self.models['shape_slat_decoder'], 'low_vram'):
+                self.models['shape_slat_decoder'].low_vram = self.low_vram
 
     def unload_shape_slat_decoder(self):
         if self.models['shape_slat_decoder'] is not None:
@@ -270,6 +289,8 @@ class Trellis2ImageTo3DPipeline(Pipeline):
             self.models['shape_slat_encoder'] = models.from_pretrained(f"{self.path}/ckpts/shape_enc_next_dc_f16c32_fp16")
             self.models['shape_slat_encoder'].eval()
             self.models['shape_slat_encoder'].to(self._device)
+            if hasattr(self.models['shape_slat_encoder'], 'low_vram'):
+                self.models['shape_slat_encoder'].low_vram = self.low_vram
 
     def unload_shape_slat_encoder(self):
         if self.models['shape_slat_encoder'] is not None:
@@ -592,11 +613,17 @@ class Trellis2ImageTo3DPipeline(Pipeline):
             ], dim=1)
             coords = quant_coords.unique(dim=0)
             num_tokens = coords.shape[0]
-            if num_tokens < max_num_tokens or hr_resolution == 1024:
+            if num_tokens < max_num_tokens:
                 if hr_resolution != resolution:
                     print(f"Due to the limited number of tokens, the resolution is reduced to {hr_resolution}.")
                 break
             hr_resolution -= 128
+            if hr_resolution < 1024 and resolution >= 1024:
+                hr_resolution = 1024
+                break
+            if hr_resolution < 512:
+                hr_resolution = 512
+                break
         
         coords_dev = coords.to(self.device)                                           
         # Sample structured latent
@@ -866,9 +893,9 @@ class Trellis2ImageTo3DPipeline(Pipeline):
         
         # Get Image Cond
         self.load_image_cond_model()        
-        # Multi-view conditioning happens inside get_cond()        
-        cond_512  = self.get_cond(images, 512, max_views = max_views)
-        cond_1024 = self.get_cond(images, 1024, max_views = max_views) if pipeline_type != '512' else None     
+        # Multi-view conditioning happens inside get_cond()              
+        cond_512  = self.get_cond(images, 512, max_views = max_views)        
+        cond_1024 = self.get_cond(images, 1024, max_views = max_views) if pipeline_type != '512' else None
         
         if not self.keep_models_loaded:
             self.unload_image_cond_model()
@@ -955,6 +982,50 @@ class Trellis2ImageTo3DPipeline(Pipeline):
                     shape_slat, tex_slat_sampler_params
                 )
             
+            if not self.keep_models_loaded:
+                self.unload_tex_slat_flow_model_1024()
+        elif pipeline_type == '2048_cascade':
+            self.load_shape_slat_flow_model_512()
+            self.load_shape_slat_flow_model_1024()
+            shape_slat, res = self.sample_shape_slat_cascade(
+                cond_512, cond_1024,
+                self.models['shape_slat_flow_model_512'], self.models['shape_slat_flow_model_1024'],
+                512, 2048,
+                coords, shape_slat_sampler_params,
+                max_num_tokens
+            )
+            if not self.keep_models_loaded:
+                self.unload_shape_slat_flow_model_512()
+                self.unload_shape_slat_flow_model_1024()
+            if generate_texture_slat:
+                self.unload_tex_slat_flow_model_512()
+                self.load_tex_slat_flow_model_1024()
+                tex_slat = self.sample_tex_slat(
+                    cond_1024, self.models['tex_slat_flow_model_1024'],
+                    shape_slat, tex_slat_sampler_params
+                )
+            if not self.keep_models_loaded:
+                self.unload_tex_slat_flow_model_1024()
+        elif pipeline_type == '4096_cascade':
+            self.load_shape_slat_flow_model_512()
+            self.load_shape_slat_flow_model_1024()
+            shape_slat, res = self.sample_shape_slat_cascade(
+                cond_512, cond_1024,
+                self.models['shape_slat_flow_model_512'], self.models['shape_slat_flow_model_1024'],
+                512, 4096,
+                coords, shape_slat_sampler_params,
+                max_num_tokens
+            )
+            if not self.keep_models_loaded:
+                self.unload_shape_slat_flow_model_512()
+                self.unload_shape_slat_flow_model_1024()
+            if generate_texture_slat:
+                self.unload_tex_slat_flow_model_512()
+                self.load_tex_slat_flow_model_1024()
+                tex_slat = self.sample_tex_slat(
+                    cond_1024, self.models['tex_slat_flow_model_1024'],
+                    shape_slat, tex_slat_sampler_params
+                )
             if not self.keep_models_loaded:
                 self.unload_tex_slat_flow_model_1024()
         elif pipeline_type == '1536_cascade':
@@ -1282,11 +1353,17 @@ class Trellis2ImageTo3DPipeline(Pipeline):
             ], dim=1)
             coords = quant_coords.unique(dim=0)
             num_tokens = coords.shape[0]
-            if num_tokens < max_num_tokens or hr_resolution == 1024:
+            if num_tokens < max_num_tokens:
                 if hr_resolution != resolution:
                     print(f"Due to the limited number of tokens, the resolution is reduced to {hr_resolution}.")
                 break
             hr_resolution -= 128
+            if hr_resolution < 1024 and resolution >= 1024:
+                hr_resolution = 1024
+                break
+            if hr_resolution < 512:
+                hr_resolution = 512
+                break
         
         coords_dev = coords.to(self.device)                                           
         # Sample structured latent

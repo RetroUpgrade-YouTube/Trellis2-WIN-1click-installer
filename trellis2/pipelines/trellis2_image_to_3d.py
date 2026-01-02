@@ -21,6 +21,8 @@ import nvdiffrast.torch as dr
 import cv2
 import flex_gemm
 
+from comfy.utils import ProgressBar
+
 
 class Trellis2ImageTo3DPipeline(Pipeline):
     """
@@ -844,7 +846,8 @@ class Trellis2ImageTo3DPipeline(Pipeline):
         max_num_tokens: int = 49152,
         sparse_structure_resolution: int = 32,
         max_views: int = 4,
-        generate_texture_slat = True
+        generate_texture_slat = True,
+        pbar = None
     ) -> List[MeshWithVoxel]:
         """
         Run the pipeline.
@@ -897,6 +900,9 @@ class Trellis2ImageTo3DPipeline(Pipeline):
         cond_512  = self.get_cond(images, 512, max_views = max_views)        
         cond_1024 = self.get_cond(images, 1024, max_views = max_views) if pipeline_type != '512' else None
         
+        if pbar is not None:
+            pbar.update(1)
+        
         if not self.keep_models_loaded:
             self.unload_image_cond_model()
         
@@ -908,6 +914,9 @@ class Trellis2ImageTo3DPipeline(Pipeline):
             cond_512, sparse_structure_resolution,
             num_samples, sparse_structure_sampler_params
         )
+        
+        if pbar is not None:
+            pbar.update(1)
         
         if not self.keep_models_loaded:
             self.unload_sparse_structure_model()
@@ -921,6 +930,9 @@ class Trellis2ImageTo3DPipeline(Pipeline):
                 coords, shape_slat_sampler_params
             )
             
+            if pbar is not None:
+                pbar.update(1)
+            
             if not self.keep_models_loaded:
                 self.unload_shape_slat_flow_model_512()
             
@@ -931,6 +943,9 @@ class Trellis2ImageTo3DPipeline(Pipeline):
                     cond_512, self.models['tex_slat_flow_model_512'],
                     shape_slat, tex_slat_sampler_params
                 )
+                
+                if pbar is not None:
+                    pbar.update(1)
             
             if not self.keep_models_loaded:
                 self.unload_tex_slat_flow_model_512()
@@ -944,6 +959,9 @@ class Trellis2ImageTo3DPipeline(Pipeline):
                 coords, shape_slat_sampler_params
             )
             
+            if pbar is not None:
+                pbar.update(1)
+            
             if not self.keep_models_loaded:
                 self.unload_shape_slat_flow_model_1024()
             
@@ -954,6 +972,9 @@ class Trellis2ImageTo3DPipeline(Pipeline):
                     cond_1024, self.models['tex_slat_flow_model_1024'],
                     shape_slat, tex_slat_sampler_params
                 )
+                
+                if pbar is not None:
+                    pbar.update(1)
             
             if not self.keep_models_loaded:
                 self.unload_tex_slat_flow_model_1024()
@@ -970,6 +991,9 @@ class Trellis2ImageTo3DPipeline(Pipeline):
                 max_num_tokens
             )
             
+            if pbar is not None:
+                pbar.update(1)
+            
             if not self.keep_models_loaded:
                 self.unload_shape_slat_flow_model_512()
                 self.unload_shape_slat_flow_model_1024()
@@ -981,6 +1005,9 @@ class Trellis2ImageTo3DPipeline(Pipeline):
                     cond_1024, self.models['tex_slat_flow_model_1024'],
                     shape_slat, tex_slat_sampler_params
                 )
+                
+            if pbar is not None:
+                pbar.update(1)
             
             if not self.keep_models_loaded:
                 self.unload_tex_slat_flow_model_1024()
@@ -994,9 +1021,14 @@ class Trellis2ImageTo3DPipeline(Pipeline):
                 coords, shape_slat_sampler_params,
                 max_num_tokens
             )
+            
+            if pbar is not None:
+                pbar.update(1)
+            
             if not self.keep_models_loaded:
                 self.unload_shape_slat_flow_model_512()
                 self.unload_shape_slat_flow_model_1024()
+                
             if generate_texture_slat:
                 self.unload_tex_slat_flow_model_512()
                 self.load_tex_slat_flow_model_1024()
@@ -1004,6 +1036,10 @@ class Trellis2ImageTo3DPipeline(Pipeline):
                     cond_1024, self.models['tex_slat_flow_model_1024'],
                     shape_slat, tex_slat_sampler_params
                 )
+                
+                if pbar is not None:
+                    pbar.update(1)
+                
             if not self.keep_models_loaded:
                 self.unload_tex_slat_flow_model_1024()
         elif pipeline_type == '4096_cascade':
@@ -1016,9 +1052,14 @@ class Trellis2ImageTo3DPipeline(Pipeline):
                 coords, shape_slat_sampler_params,
                 max_num_tokens
             )
+            
+            if pbar is not None:
+                pbar.update(1)
+            
             if not self.keep_models_loaded:
                 self.unload_shape_slat_flow_model_512()
                 self.unload_shape_slat_flow_model_1024()
+                
             if generate_texture_slat:
                 self.unload_tex_slat_flow_model_512()
                 self.load_tex_slat_flow_model_1024()
@@ -1026,6 +1067,10 @@ class Trellis2ImageTo3DPipeline(Pipeline):
                     cond_1024, self.models['tex_slat_flow_model_1024'],
                     shape_slat, tex_slat_sampler_params
                 )
+                        
+                if pbar is not None:
+                    pbar.update(1)  
+                
             if not self.keep_models_loaded:
                 self.unload_tex_slat_flow_model_1024()
         elif pipeline_type == '1536_cascade':
@@ -1039,6 +1084,9 @@ class Trellis2ImageTo3DPipeline(Pipeline):
                 max_num_tokens
             )
             
+            if pbar is not None:
+                pbar.update(1)
+            
             if not self.keep_models_loaded:
                 self.unload_shape_slat_flow_model_512()
                 self.unload_shape_slat_flow_model_1024()
@@ -1050,6 +1098,9 @@ class Trellis2ImageTo3DPipeline(Pipeline):
                     cond_1024, self.models['tex_slat_flow_model_1024'],
                     shape_slat, tex_slat_sampler_params
                 )
+                
+                if pbar is not None:
+                    pbar.update(1)
             
             if not self.keep_models_loaded:
                 self.unload_tex_slat_flow_model_1024()               

@@ -169,52 +169,100 @@ def sparse_scaled_dot_product_attention(*args, **kwargs):
             k = k.reshape(N * L, H, CI)     # [T_KV, H, Ci]
             v = v.reshape(N * L, H, CO)     # [T_KV, H, Co]
 
+    # ---- attention dispatch with safe fallbacks (Windows-friendly) ----
+    def _sdpa_varlen(q, k, v, q_seqlen, kv_seqlen):
+        # q: [TQ, H, Cq], k: [TK, H, Cq], v: [TK, H, Cv]
+        # returns: [TQ, H, Cv]
+        outs = []
+        q_off = 0
+        kv_off = 0
+        for n in range(len(q_seqlen)):
+            qn = q_seqlen[n]
+            kn = kv_seqlen[n]
+            q_i = q[q_off:q_off + qn].transpose(0, 1)   # [H, qn, C]
+            k_i = k[kv_off:kv_off + kn].transpose(0, 1) # [H, kn, C]
+            v_i = v[kv_off:kv_off + kn].transpose(0, 1) # [H, kn, Cv]
+
+            # SDPA expects [B, heads, L, C] or [heads, L, C]. We use [1, H, L, C]
+            q_i = q_i.unsqueeze(0)  # [1, H, qn, C]
+            k_i = k_i.unsqueeze(0)  # [1, H, kn, C]
+            v_i = v_i.unsqueeze(0)  # [1, H, kn, Cv]
+
+            out_i = torch.nn.functional.scaled_dot_product_attention(
+                q_i, k_i, v_i,
+                dropout_p=0.0,
+                is_causal=False
+            )[0]  # [H, qn, Cv]
+
+            outs.append(out_i.transpose(0, 1))  # [qn, H, Cv]
+            q_off += qn
+            kv_off += kn
+
+        return torch.cat(outs, dim=0)  # [TQ, H, Cv]
+
+    if num_all_args == 1:
+        q, k, v = qkv.unbind(dim=1)  # qkv: [T, 3, H, C]
+    elif num_all_args == 2:
+        k, v = kv.unbind(dim=1)      # kv:  [T, 2, H, C]
+    # for num_all_args == 3, q/k/v already set
+
     if config.ATTN == 'xformers':
-        if 'xops' not in globals():
-            import xformers.ops as xops
-        if num_all_args == 1:
-            q, k, v = qkv.unbind(dim=1)
-        elif num_all_args == 2:
-            k, v = kv.unbind(dim=1)
-        q = q.unsqueeze(0)
-        k = k.unsqueeze(0)
-        v = v.unsqueeze(0)
-        mask = xops.fmha.BlockDiagonalMask.from_seqlens(q_seqlen, kv_seqlen)
-        out = xops.memory_efficient_attention(q, k, v, mask)[0]
+        try:
+            if 'xops' not in globals():
+                import xformers.ops as xops
+            q_x = q.unsqueeze(0)
+            k_x = k.unsqueeze(0)
+            v_x = v.unsqueeze(0)
+            mask = xops.fmha.BlockDiagonalMask.from_seqlens(q_seqlen, kv_seqlen)
+            out = xops.memory_efficient_attention(q_x, k_x, v_x, mask)[0]
+        except Exception:
+            # fallback to torch SDPA
+            out = _sdpa_varlen(q, k, v, q_seqlen, kv_seqlen)
+
     elif config.ATTN == 'flash_attn':
-        if 'flash_attn' not in globals():
-            import flash_attn
-        cu_seqlens_q = torch.cat([torch.tensor([0]), torch.cumsum(torch.tensor(q_seqlen), dim=0)]).int().to(device)
-        if num_all_args in [2, 3]:
+        try:
+            if 'flash_attn' not in globals():
+                import flash_attn
+            cu_seqlens_q = torch.cat([torch.tensor([0]), torch.cumsum(torch.tensor(q_seqlen), dim=0)]).int().to(device)
             cu_seqlens_kv = torch.cat([torch.tensor([0]), torch.cumsum(torch.tensor(kv_seqlen), dim=0)]).int().to(device)
-        if num_all_args == 1:
-            out = flash_attn.flash_attn_varlen_qkvpacked_func(qkv, cu_seqlens_q, max(q_seqlen))
-        elif num_all_args == 2:
-            out = flash_attn.flash_attn_varlen_kvpacked_func(q, kv, cu_seqlens_q, cu_seqlens_kv, max(q_seqlen), max(kv_seqlen))
-        elif num_all_args == 3:
-            out = flash_attn.flash_attn_varlen_func(q, k, v, cu_seqlens_q, cu_seqlens_kv, max(q_seqlen), max(kv_seqlen))
+            if num_all_args == 1:
+                # needs packed qkv [T, 3, H, C]
+                out = flash_attn.flash_attn_varlen_qkvpacked_func(qkv, cu_seqlens_q, max(q_seqlen))
+            elif num_all_args == 2:
+                out = flash_attn.flash_attn_varlen_kvpacked_func(q, kv, cu_seqlens_q, cu_seqlens_kv, max(q_seqlen), max(kv_seqlen))
+            elif num_all_args == 3:
+                out = flash_attn.flash_attn_varlen_func(q, k, v, cu_seqlens_q, cu_seqlens_kv, max(q_seqlen), max(kv_seqlen))
+        except Exception:
+            # fallback to torch SDPA
+            out = _sdpa_varlen(q, k, v, q_seqlen, kv_seqlen)
+
     elif config.ATTN == 'flash_attn_3':
-        if 'flash_attn_3' not in globals():
-            import flash_attn_interface as flash_attn_3
-        cu_seqlens_q = torch.cat([torch.tensor([0]), torch.cumsum(torch.tensor(q_seqlen), dim=0)]).int().to(device)
-        if num_all_args == 1:
-            q, k, v = qkv.unbind(dim=1)
-            cu_seqlens_kv = cu_seqlens_q.clone()
-            max_q_seqlen = max_kv_seqlen = max(q_seqlen)
-        elif num_all_args == 2:
-            k, v = kv.unbind(dim=1)
-            cu_seqlens_kv = torch.cat([torch.tensor([0]), torch.cumsum(torch.tensor(kv_seqlen), dim=0)]).int().to(device)
-            max_q_seqlen = max(q_seqlen)
-            max_kv_seqlen = max(kv_seqlen)
-        elif num_all_args == 3:
-            cu_seqlens_kv = torch.cat([torch.tensor([0]), torch.cumsum(torch.tensor(kv_seqlen), dim=0)]).int().to(device)
-            max_q_seqlen = max(q_seqlen)
-            max_kv_seqlen = max(kv_seqlen)
-        out = flash_attn_3.flash_attn_varlen_func(q, k, v, cu_seqlens_q, cu_seqlens_kv, max_q_seqlen, max_kv_seqlen)
+        try:
+            if 'flash_attn_3' not in globals():
+                import flash_attn_interface as flash_attn_3
+            cu_seqlens_q = torch.cat([torch.tensor([0]), torch.cumsum(torch.tensor(q_seqlen), dim=0)]).int().to(device)
+            if num_all_args == 1:
+                q3, k3, v3 = qkv.unbind(dim=1)
+                cu_seqlens_kv = cu_seqlens_q.clone()
+                max_q_seqlen = max_kv_seqlen = max(q_seqlen)
+                out = flash_attn_3.flash_attn_varlen_func(q3, k3, v3, cu_seqlens_q, cu_seqlens_kv, max_q_seqlen, max_kv_seqlen)
+            elif num_all_args == 2:
+                k3, v3 = kv.unbind(dim=1)
+                cu_seqlens_kv = torch.cat([torch.tensor([0]), torch.cumsum(torch.tensor(kv_seqlen), dim=0)]).int().to(device)
+                out = flash_attn_3.flash_attn_varlen_func(q, k3, v3, cu_seqlens_q, cu_seqlens_kv, max(q_seqlen), max(kv_seqlen))
+            elif num_all_args == 3:
+                cu_seqlens_kv = torch.cat([torch.tensor([0]), torch.cumsum(torch.tensor(kv_seqlen), dim=0)]).int().to(device)
+                out = flash_attn_3.flash_attn_varlen_func(q, k, v, cu_seqlens_q, cu_seqlens_kv, max(q_seqlen), max(kv_seqlen))
+        except Exception:
+            # fallback to torch SDPA
+            out = _sdpa_varlen(q, k, v, q_seqlen, kv_seqlen)
+
     else:
-        raise ValueError(f"Unknown attention module: {config.ATTN}")
-    
+        # final fallback: torch SDPA
+        out = _sdpa_varlen(q, k, v, q_seqlen, kv_seqlen)
+
     if s is not None:
         return s.replace(out)
     else:
         return out.reshape(N, L, H, -1)
+

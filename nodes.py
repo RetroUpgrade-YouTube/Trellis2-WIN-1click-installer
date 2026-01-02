@@ -820,8 +820,15 @@ class Trellis2MeshWithVoxelAdvancedGenerator:
         sparse_structure_sampler_params = {"steps":sparse_structure_steps,"guidance_strength":sparse_structure_guidance_strength,"guidance_rescale":sparse_structure_guidance_rescale,"guidance_interval":sparse_structure_guidance_interval,"rescale_t":sparse_structure_rescale_t}        
         shape_slat_sampler_params = {"steps":shape_steps,"guidance_strength":shape_guidance_strength,"guidance_rescale":shape_guidance_rescale,"guidance_interval":shape_guidance_interval,"rescale_t":shape_rescale_t}       
         tex_slat_sampler_params = {"steps":texture_steps,"guidance_strength":texture_guidance_strength,"guidance_rescale":texture_guidance_rescale,"guidance_interval":texture_guidance_interval,"rescale_t":texture_rescale_t}
+            
+        if generate_texture_slat:
+            num_steps = 4
+        else:
+            num_steps = 3
+
+        pbar = ProgressBar(num_steps)
         
-        mesh = pipeline.run(image=image_in, seed=seed, pipeline_type=pipeline_type, sparse_structure_sampler_params = sparse_structure_sampler_params, shape_slat_sampler_params = shape_slat_sampler_params, tex_slat_sampler_params = tex_slat_sampler_params, max_num_tokens = max_num_tokens, sparse_structure_resolution = sparse_structure_resolution, max_views = max_views, generate_texture_slat=generate_texture_slat)[0]         
+        mesh = pipeline.run(image=image_in, seed=seed, pipeline_type=pipeline_type, sparse_structure_sampler_params = sparse_structure_sampler_params, shape_slat_sampler_params = shape_slat_sampler_params, tex_slat_sampler_params = tex_slat_sampler_params, max_num_tokens = max_num_tokens, sparse_structure_resolution = sparse_structure_resolution, max_views = max_views, generate_texture_slat=generate_texture_slat, pbar=pbar)[0]         
         
         return (mesh,)    
 
@@ -857,6 +864,7 @@ class Trellis2PostProcessAndUnWrapAndRasterizer:
     OUTPUT_NODE = True
 
     def process(self, mesh, mesh_cluster_threshold_cone_half_angle_rad, mesh_cluster_refine_iterations, mesh_cluster_global_iterations, mesh_cluster_smooth_strength, texture_size, remesh, remesh_band, remesh_project, target_face_num, simplify_method, fill_holes, fill_holes_max_perimeter, texture_alpha_mode, dual_contouring_resolution, double_side_material,remove_floaters):
+        pbar = ProgressBar(5)
         mesh_copy = copy.deepcopy(mesh)
         
         aabb = [[-0.5, -0.5, -0.5], [0.5, 0.5, 0.5]]
@@ -915,6 +923,7 @@ class Trellis2PostProcessAndUnWrapAndRasterizer:
         # Build BVH for the current mesh to guide remeshing
         print(f"Building BVH for current mesh...")
         bvh = CuMesh.cuBVH(vertices, faces)
+        pbar.update(1)
             
         print("Cleaning mesh...")        
         # --- Branch 1: Standard Pipeline (Simplification & Cleaning) ---
@@ -992,6 +1001,7 @@ class Trellis2PostProcessAndUnWrapAndRasterizer:
                 cumesh.init(torch.from_numpy(new_vertices).float().cuda(), torch.from_numpy(new_faces).int().cuda())
 
         print(f"After simplifying: {cumesh.num_vertices} vertices, {cumesh.num_faces} faces")            
+        pbar.update(1)
         
         print('Unwrapping ...')        
         out_vertices, out_faces, out_uvs, out_vmaps = cumesh.uv_unwrap(
@@ -1004,6 +1014,7 @@ class Trellis2PostProcessAndUnWrapAndRasterizer:
             return_vmaps=True,
             verbose=True,
         )
+        pbar.update(1)
         
         out_vertices = out_vertices.cuda()
         out_faces = out_faces.cuda()
@@ -1054,6 +1065,7 @@ class Trellis2PostProcessAndUnWrapAndRasterizer:
         
         # --- Texture Post-Processing & Material Construction ---
         print("Finalizing mesh...")
+        pbar.update(1)
         
         mask = mask.cpu().numpy()
         
@@ -1101,7 +1113,8 @@ class Trellis2PostProcessAndUnWrapAndRasterizer:
             vertex_normals=normals_np,
             process=False,
             visual=Trimesh.visual.TextureVisuals(uv=uvs_np,material=material)
-        )        
+        )
+        pbar.update(1)        
         
         del cumesh
         gc.collect()         

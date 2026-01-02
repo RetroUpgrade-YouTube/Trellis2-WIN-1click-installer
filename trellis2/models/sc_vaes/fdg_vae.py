@@ -15,6 +15,7 @@ from .sparse_unet_vae import (
 from .sparse_unet_vae import (
     SparseUnetVaeEncoder,
     SparseUnetVaeDecoder,
+    chunked_apply,
 )
 from ...representations import Mesh
 from o_voxel.convert import flexible_dual_grid_to_mesh
@@ -84,9 +85,16 @@ class FlexiDualGridVaeDecoder(SparseUnetVaeDecoder):
         decoded = super().forward(x, **kwargs)
         if self.training:
             h, subs_gt, subs = decoded
-            vertices = h.replace((1 + 2 * self.voxel_margin) * F.sigmoid(h.feats[..., 0:3]) - self.voxel_margin)
-            intersected_logits = h.replace(h.feats[..., 3:6])
-            quad_lerp = h.replace(F.softplus(h.feats[..., 6:7]))
+            if self.low_vram:
+                vertices_feats = chunked_apply(lambda t: (1 + 2 * self.voxel_margin) * F.sigmoid(t[..., 0:3]) - self.voxel_margin, h.feats, self.chunk_size)
+                vertices = h.replace(vertices_feats)
+                intersected_logits = h.replace(h.feats[..., 3:6])
+                quad_lerp_feats = chunked_apply(lambda t: F.softplus(t[..., 6:7]), h.feats, self.chunk_size)
+                quad_lerp = h.replace(quad_lerp_feats)
+            else:
+                vertices = h.replace((1 + 2 * self.voxel_margin) * F.sigmoid(h.feats[..., 0:3]) - self.voxel_margin)
+                intersected_logits = h.replace(h.feats[..., 3:6])
+                quad_lerp = h.replace(F.softplus(h.feats[..., 6:7]))
             mesh = [Mesh(flexible_dual_grid_to_mesh(
                 h.coords[:, 1:], v.feats, i.feats, q.feats,
                 aabb=[[-0.5, -0.5, -0.5], [0.5, 0.5, 0.5]],
@@ -97,9 +105,16 @@ class FlexiDualGridVaeDecoder(SparseUnetVaeDecoder):
         else:
             out_list = list(decoded) if isinstance(decoded, tuple) else [decoded]
             h = out_list[0]
-            vertices = h.replace((1 + 2 * self.voxel_margin) * F.sigmoid(h.feats[..., 0:3]) - self.voxel_margin)
-            intersected = h.replace(h.feats[..., 3:6] > 0)
-            quad_lerp = h.replace(F.softplus(h.feats[..., 6:7]))
+            if self.low_vram:
+                vertices_feats = chunked_apply(lambda t: (1 + 2 * self.voxel_margin) * F.sigmoid(t[..., 0:3]) - self.voxel_margin, h.feats, self.chunk_size)
+                vertices = h.replace(vertices_feats)
+                intersected = h.replace(h.feats[..., 3:6] > 0)
+                quad_lerp_feats = chunked_apply(lambda t: F.softplus(t[..., 6:7]), h.feats, self.chunk_size)
+                quad_lerp = h.replace(quad_lerp_feats)
+            else:
+                vertices = h.replace((1 + 2 * self.voxel_margin) * F.sigmoid(h.feats[..., 0:3]) - self.voxel_margin)
+                intersected = h.replace(h.feats[..., 3:6] > 0)
+                quad_lerp = h.replace(F.softplus(h.feats[..., 6:7]))
             mesh = [Mesh(*flexible_dual_grid_to_mesh(
                 h.coords[:, 1:], v.feats, i.feats, q.feats,
                 aabb=[[-0.5, -0.5, -0.5], [0.5, 0.5, 0.5]],

@@ -1307,13 +1307,22 @@ class Trellis2ImageTo3DPipeline(Pipeline):
         resolution: int = 1024,
         texture_size: int = 2048,
         texture_alpha_mode = 'OPAQUE',
-        double_side_material = True
+        double_side_material = True,
+        max_views = 4
     ):
         mesh = self.preprocess_mesh(mesh)
         torch.manual_seed(seed)
         
+        # Accept either a single PIL image or a list of PIL images (multi-view)
+        if isinstance(image, (list, tuple)):
+            images = list(image)
+        else:
+            images = [image]
+            
+        torch.manual_seed(seed)
+        
         self.load_image_cond_model()        
-        cond = self.get_cond(image, resolution)
+        cond = self.get_cond(images, resolution, max_views = max_views)
         
         if not self.keep_models_loaded:
             self.unload_image_cond_model()

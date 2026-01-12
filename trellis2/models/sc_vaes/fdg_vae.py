@@ -118,7 +118,7 @@ class FlexiDualGridVaeDecoder(SparseUnetVaeDecoder):
                 
             if useTiled:
                 mesh = [Mesh(*tiled_flexible_dual_grid_to_mesh(
-                        coords=h.coords[:, 1:], 
+                        coords=v.coords[:, 1:], 
                         dual_vertices=v.feats, 
                         intersected_flag=i.feats, 
                         split_weight=q.feats, 
@@ -129,7 +129,7 @@ class FlexiDualGridVaeDecoder(SparseUnetVaeDecoder):
                     )) for v, i, q in zip(vertices, intersected, quad_lerp)]
             else:
                 mesh = [Mesh(*flexible_dual_grid_to_mesh(
-                        coords=h.coords[:, 1:], 
+                        coords=v.coords[:, 1:], 
                         dual_vertices=v.feats, 
                         intersected_flag=i.feats, 
                         split_weight=q.feats, 

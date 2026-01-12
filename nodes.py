@@ -1271,7 +1271,8 @@ class Trellis2MeshTexturing:
                 "texture_alpha_mode": (["OPAQUE","MASK","BLEND"],{"default":"OPAQUE"}),
                 "double_side_material": ("BOOLEAN",{"default":True}), 
                 "texture_guidance_interval_start": ("FLOAT",{"default":0.60,"min":0.00,"max":1.00,"step":0.01}),
-                "texture_guidance_interval_end": ("FLOAT",{"default":0.90,"min":0.00,"max":1.00,"step":0.01}),                
+                "texture_guidance_interval_end": ("FLOAT",{"default":0.90,"min":0.00,"max":1.00,"step":0.01}),
+                "max_views": ("INT", {"default": 4, "min": 1, "max": 16}),
             },
         }
 
@@ -1281,22 +1282,25 @@ class Trellis2MeshTexturing:
     CATEGORY = "Trellis2Wrapper"
     OUTPUT_NODE = True
 
-    def process(self, pipeline, image, trimesh, seed, texture_steps, texture_guidance_strength, texture_guidance_rescale, texture_rescale_t, resolution, texture_size, texture_alpha_mode, double_side_material, texture_guidance_interval_start, texture_guidance_interval_end):
-        #image = tensor2pil_v2(image)
-        image = tensor2pil(image)
+    def process(self, pipeline, image, trimesh, seed, texture_steps, texture_guidance_strength, texture_guidance_rescale, texture_rescale_t, resolution, texture_size, texture_alpha_mode, double_side_material, texture_guidance_interval_start, texture_guidance_interval_end, max_views):
+        images = tensor_batch_to_pil_list(image, max_views=max_views)
+        image_in = images[0] if len(images) == 1 else images
+
+        #image = tensor2pil(image)
         
         texture_guidance_interval = [texture_guidance_interval_start,texture_guidance_interval_end]                
         
         tex_slat_sampler_params = {"steps":texture_steps,"guidance_strength":texture_guidance_strength,"guidance_rescale":texture_guidance_rescale,"guidance_interval":texture_guidance_interval,"rescale_t":texture_rescale_t}
 
         textured_mesh, baseColorTexture_np, metallicRoughnessTexture_np = pipeline.texture_mesh(mesh=trimesh, 
-            image=image, 
+            image=image_in, 
             seed=seed, 
             tex_slat_sampler_params = tex_slat_sampler_params,
             resolution = resolution,
             texture_size = texture_size,
             texture_alpha_mode = texture_alpha_mode,
-            double_side_material = double_side_material
+            double_side_material = double_side_material,
+            max_views = max_views
         )
             
 

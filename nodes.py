@@ -476,11 +476,11 @@ class Trellis2ExportMesh:
         output_glb_path = Path(full_output_folder, f'{filename}_{counter:05}_.{file_format}')
         output_glb_path.parent.mkdir(exist_ok=True)
         if save_file:
-            trimesh.export(output_glb_path, file_type=file_format, include_normals=True)
+            trimesh.export(output_glb_path, file_type=file_format)
             relative_path = Path(subfolder) / f'{filename}_{counter:05}_.{file_format}'
         else:
             temp_file = Path(full_output_folder, f'hy3dtemp_.{file_format}')
-            trimesh.export(temp_file, file_type=file_format,include_normals=True)
+            trimesh.export(temp_file, file_type=file_format)
             relative_path = Path(subfolder) / f'hy3dtemp_.{file_format}'
         
         return (str(relative_path), )        
@@ -989,7 +989,7 @@ class Trellis2PostProcessAndUnWrapAndRasterizer:
             cumesh.init(*CuMesh.remeshing.remesh_narrow_band_dc(
                 vertices, faces,
                 center = center,
-                scale = 1.0, # old calculation : (resolution + 3 * remesh_band) / resolution * scale,
+                scale = scale, # old calculation : (resolution + 3 * remesh_band) / resolution * scale,
                 resolution = resolution,
                 band = remesh_band,
                 project_back = remesh_project, # Snaps vertices back to original surface
@@ -1230,7 +1230,7 @@ class Trellis2Remesh:
         cumesh.init(*CuMesh.remeshing.remesh_narrow_band_dc(
             vertices, faces,
             center = center,
-            scale = 1.0, # old calculation (resolution + 3 * remesh_band) / resolution * scale,
+            scale = scale, # old calculation (resolution + 3 * remesh_band) / resolution * scale,
             resolution = resolution,
             band = remesh_band,
             project_back = remesh_project, # Snaps vertices back to original surface

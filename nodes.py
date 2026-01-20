@@ -152,7 +152,7 @@ def remove_mesh_infinite_vertices(mesh):
     trimesh.update_vertices(valid_mask)
     
     # Removing vertices can leave "degenerate" faces or orphan nodes
-    trimesh.remove_degenerate_faces()
+    trimesh.update_faces(trimesh.nondegenerate_faces())
     trimesh.remove_unreferenced_vertices()  
 
     print(f"Cleaned vertex count: {len(trimesh.vertices)}")

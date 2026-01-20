@@ -317,8 +317,8 @@ class Trellis2MeshWithVoxelGenerator:
             },
         }
 
-    RETURN_TYPES = ("MESHWITHVOXEL", )
-    RETURN_NAMES = ("mesh", )
+    RETURN_TYPES = ("MESHWITHVOXEL", "BVH", )
+    RETURN_NAMES = ("mesh", "bvh", )
     FUNCTION = "process"
     CATEGORY = "Trellis2Wrapper"
     OUTPUT_NODE = True
@@ -340,7 +340,16 @@ class Trellis2MeshWithVoxelGenerator:
         
         mesh = pipeline.run(image=image_in, seed=seed, pipeline_type=pipeline_type, sparse_structure_sampler_params = sparse_structure_sampler_params, shape_slat_sampler_params = shape_slat_sampler_params, tex_slat_sampler_params = tex_slat_sampler_params, max_num_tokens = max_num_tokens, sparse_structure_resolution = sparse_structure_resolution, max_views = max_views, generate_texture_slat = generate_texture_slat, use_tiled=use_tiled_decoder, pbar=pbar)[0]
         
-        return (mesh,)    
+        vertices = mesh.vertices.cuda()
+        faces = mesh.faces.cuda()        
+       
+        # Build BVH for the current mesh to guide remeshing
+        print(f"Building BVH for current mesh...")
+        bvh = CuMesh.cuBVH(vertices, faces)           
+        bvh.vertices = vertices
+        bvh.faces = faces
+        
+        return (mesh, bvh,)    
 
 class Trellis2LoadImageWithTransparency:
     @classmethod
@@ -651,8 +660,11 @@ class Trellis2UnWrapAndRasterizer:
                 "texture_alpha_mode": (["OPAQUE","MASK","BLEND"],{"default":"OPAQUE"}),
                 "double_side_material": ("BOOLEAN",{"default":True}),
                 "bake_on_vertices": ("BOOLEAN",{"default":False}),
-                "use_custom_normals": ("BOOLEAN",{"default":False}),
+                "use_custom_normals": ("BOOLEAN",{"default":False}),                
             },
+            "optional":{
+                "bvh": ("BVH",),            
+            }
         }
 
     RETURN_TYPES = ("TRIMESH","IMAGE","IMAGE",)
@@ -661,7 +673,7 @@ class Trellis2UnWrapAndRasterizer:
     CATEGORY = "Trellis2Wrapper"
     OUTPUT_NODE = True
 
-    def process(self, mesh, mesh_cluster_threshold_cone_half_angle_rad, mesh_cluster_refine_iterations, mesh_cluster_global_iterations, mesh_cluster_smooth_strength, texture_size, texture_alpha_mode, double_side_material, bake_on_vertices = False,use_custom_normals=False):
+    def process(self, mesh, mesh_cluster_threshold_cone_half_angle_rad, mesh_cluster_refine_iterations, mesh_cluster_global_iterations, mesh_cluster_smooth_strength, texture_size, texture_alpha_mode, double_side_material, bake_on_vertices = False,use_custom_normals=False,bvh=None):
         mesh_copy = copy.deepcopy(mesh)
         
         aabb = [[-0.5, -0.5, -0.5], [0.5, 0.5, 0.5]]
@@ -708,8 +720,11 @@ class Trellis2UnWrapAndRasterizer:
         cumesh.init(vertices, faces)
         
         # Build BVH for the current mesh to guide remeshing
-        print(f"Building BVH for current mesh...")
-        bvh = CuMesh.cuBVH(vertices, faces)        
+        if bvh == None:
+            print(f"Building BVH for current mesh...")
+            bvh = CuMesh.cuBVH(vertices, faces) 
+            bvh.vertices = vertices
+            bvh.faces = faces
         
         # --- Branch: Bake On Vertices (skip UV unwrapping and texture creation) ---
         if bake_on_vertices:
@@ -836,7 +851,7 @@ class Trellis2UnWrapAndRasterizer:
         # Map these positions back to the *original* high-res mesh to get accurate attributes
         # This corrects geometric errors introduced by simplification/remeshing
         _, face_id, uvw = bvh.unsigned_distance(valid_pos, return_uvw=True)
-        orig_tri_verts = vertices[faces[face_id.long()]] # (N_new, 3, 3)
+        orig_tri_verts = bvh.vertices[bvh.faces[face_id.long()]] # (N_new, 3, 3)
         valid_pos = (orig_tri_verts * uvw.unsqueeze(-1)).sum(dim=1)
         
         # Trilinear sampling from the attribute volume (Color, Material props)
@@ -847,7 +862,7 @@ class Trellis2UnWrapAndRasterizer:
             shape=torch.Size([1, attr_volume.shape[1], *grid_size.tolist()]),
             grid=((valid_pos - aabb[0]) / voxel_size).reshape(1, -1, 3),
             mode='trilinear',
-        )
+        )      
         
         # --- Texture Post-Processing & Material Construction ---
         print("Finalizing mesh...")
@@ -863,7 +878,7 @@ class Trellis2UnWrapAndRasterizer:
         
         # Inpainting: fill gaps (dilation) to prevent black seams at UV boundaries
         mask_inv = (~mask).astype(np.uint8)
-        base_color = cv2.inpaint(base_color, mask_inv, 3, cv2.INPAINT_TELEA)
+        base_color = cv2.inpaint(base_color, mask_inv, 1, cv2.INPAINT_TELEA)
         metallic = cv2.inpaint(metallic, mask_inv, 1, cv2.INPAINT_TELEA)[..., None]
         roughness = cv2.inpaint(roughness, mask_inv, 1, cv2.INPAINT_TELEA)[..., None]
         alpha = cv2.inpaint(alpha, mask_inv, 1, cv2.INPAINT_TELEA)[..., None]
@@ -952,8 +967,8 @@ class Trellis2MeshWithVoxelAdvancedGenerator:
             },
         }
 
-    RETURN_TYPES = ("MESHWITHVOXEL", )
-    RETURN_NAMES = ("mesh", )
+    RETURN_TYPES = ("MESHWITHVOXEL","BVH", )
+    RETURN_NAMES = ("mesh", "bvh", )
     FUNCTION = "process"
     CATEGORY = "Trellis2Wrapper"
     OUTPUT_NODE = True
@@ -1002,7 +1017,16 @@ class Trellis2MeshWithVoxelAdvancedGenerator:
         
         mesh = pipeline.run(image=image_in, seed=seed, pipeline_type=pipeline_type, sparse_structure_sampler_params = sparse_structure_sampler_params, shape_slat_sampler_params = shape_slat_sampler_params, tex_slat_sampler_params = tex_slat_sampler_params, max_num_tokens = max_num_tokens, sparse_structure_resolution = sparse_structure_resolution, max_views = max_views, generate_texture_slat=generate_texture_slat, use_tiled=use_tiled_decoder, pbar=pbar)[0]         
         
-        return (mesh,)    
+        vertices = mesh.vertices.cuda()
+        faces = mesh.faces.cuda()                
+        
+        # Build BVH for the current mesh to guide remeshing
+        print(f"Building BVH for current mesh...")
+        bvh = CuMesh.cuBVH(vertices, faces)           
+        bvh.vertices = vertices
+        bvh.faces = faces
+        
+        return (mesh,bvh,)    
 
 class Trellis2PostProcessAndUnWrapAndRasterizer:
     @classmethod
@@ -1028,7 +1052,11 @@ class Trellis2PostProcessAndUnWrapAndRasterizer:
                 "remove_floaters": ("BOOLEAN",{"default":True}),
                 "bake_on_vertices": ("BOOLEAN",{"default":False}),
                 "use_custom_normals":("BOOLEAN",{"default":False}),
+                
             },
+            "optional":{
+                "bvh": ("BVH",),            
+            }
         }
 
     RETURN_TYPES = ("TRIMESH","IMAGE","IMAGE",)
@@ -1037,7 +1065,7 @@ class Trellis2PostProcessAndUnWrapAndRasterizer:
     CATEGORY = "Trellis2Wrapper"
     OUTPUT_NODE = True
 
-    def process(self, mesh, mesh_cluster_threshold_cone_half_angle_rad, mesh_cluster_refine_iterations, mesh_cluster_global_iterations, mesh_cluster_smooth_strength, texture_size, remesh, remesh_band, remesh_project, target_face_num, simplify_method, fill_holes, fill_holes_max_perimeter, texture_alpha_mode, dual_contouring_resolution, double_side_material, remove_floaters, bake_on_vertices=False,use_custom_normals=False):
+    def process(self, mesh, mesh_cluster_threshold_cone_half_angle_rad, mesh_cluster_refine_iterations, mesh_cluster_global_iterations, mesh_cluster_smooth_strength, texture_size, remesh, remesh_band, remesh_project, target_face_num, simplify_method, fill_holes, fill_holes_max_perimeter, texture_alpha_mode, dual_contouring_resolution, double_side_material, remove_floaters, bake_on_vertices=False,use_custom_normals=False,bvh=None):
         pbar = ProgressBar(5 if not bake_on_vertices else 4)
         mesh_copy = copy.deepcopy(mesh)
         
@@ -1095,8 +1123,12 @@ class Trellis2PostProcessAndUnWrapAndRasterizer:
             print(f"After filling holes: {cumesh.num_vertices} vertices, {cumesh.num_faces} faces")        
             
         # Build BVH for the current mesh to guide remeshing
-        print(f"Building BVH for current mesh...")
-        bvh = CuMesh.cuBVH(vertices, faces)
+        if bvh == None:
+            print(f"Building BVH for current mesh...")
+            bvh = CuMesh.cuBVH(vertices, faces)
+            bvh.vertices = vertices
+            bvh.faces = faces
+            
         pbar.update(1)
             
         print("Cleaning mesh...")        
@@ -1310,7 +1342,7 @@ class Trellis2PostProcessAndUnWrapAndRasterizer:
         # Map these positions back to the *original* high-res mesh to get accurate attributes
         # This corrects geometric errors introduced by simplification/remeshing
         _, face_id, uvw = bvh.unsigned_distance(valid_pos, return_uvw=True)
-        orig_tri_verts = vertices[faces[face_id.long()]] # (N_new, 3, 3)
+        orig_tri_verts = bvh.vertices[bvh.faces[face_id.long()]] # (N_new, 3, 3)
         valid_pos = (orig_tri_verts * uvw.unsqueeze(-1)).sum(dim=1)
         
         # Trilinear sampling from the attribute volume (Color, Material props)
@@ -1338,7 +1370,7 @@ class Trellis2PostProcessAndUnWrapAndRasterizer:
         
         # Inpainting: fill gaps (dilation) to prevent black seams at UV boundaries
         mask_inv = (~mask).astype(np.uint8)
-        base_color = cv2.inpaint(base_color, mask_inv, 3, cv2.INPAINT_TELEA)
+        base_color = cv2.inpaint(base_color, mask_inv, 1, cv2.INPAINT_TELEA)
         metallic = cv2.inpaint(metallic, mask_inv, 1, cv2.INPAINT_TELEA)[..., None]
         roughness = cv2.inpaint(roughness, mask_inv, 1, cv2.INPAINT_TELEA)[..., None]
         alpha = cv2.inpaint(alpha, mask_inv, 1, cv2.INPAINT_TELEA)[..., None]
@@ -1406,6 +1438,9 @@ class Trellis2Remesh:
                 "dual_contouring_resolution": (["Auto","128","256","512","1024","2048"],{"default":"Auto"}),
                 "remove_floaters": ("BOOLEAN",{"default":True}),
             },
+            "optional":{
+                "bvh": ("BVH",),            
+            }
         }
 
     RETURN_TYPES = ("MESHWITHVOXEL",)
@@ -1414,7 +1449,7 @@ class Trellis2Remesh:
     CATEGORY = "Trellis2Wrapper"
     OUTPUT_NODE = True
 
-    def process(self, mesh, remesh_band, remesh_project, fill_holes, fill_holes_max_perimeter, dual_contouring_resolution, remove_floaters):
+    def process(self, mesh, remesh_band, remesh_project, fill_holes, fill_holes_max_perimeter, dual_contouring_resolution, remove_floaters, bvh=None):
         mesh_copy = copy.deepcopy(mesh)
         
         if remove_floaters:
@@ -1471,8 +1506,9 @@ class Trellis2Remesh:
         vertices, faces = cumesh.read()
             
         # Build BVH for the current mesh to guide remeshing
-        print(f"Building BVH for current mesh...")
-        bvh = CuMesh.cuBVH(vertices, faces)
+        if bvh == None:
+            print(f"Building BVH for current mesh...")
+            bvh = CuMesh.cuBVH(vertices, faces)
             
         print("Cleaning mesh...")        
         center = aabb.mean(dim=0)
@@ -1680,8 +1716,8 @@ class Trellis2MeshRefiner:
             },
         }
 
-    RETURN_TYPES = ("MESHWITHVOXEL", )
-    RETURN_NAMES = ("mesh", )
+    RETURN_TYPES = ("MESHWITHVOXEL", "BVH", )
+    RETURN_NAMES = ("mesh", "bvh", )
     FUNCTION = "process"
     CATEGORY = "Trellis2Wrapper"
     OUTPUT_NODE = True
@@ -1714,7 +1750,16 @@ class Trellis2MeshRefiner:
         
         mesh = pipeline.refine_mesh(mesh = trimesh, image=image, seed=seed, shape_slat_sampler_params = shape_slat_sampler_params, tex_slat_sampler_params = tex_slat_sampler_params, resolution = resolution, max_num_tokens = max_num_tokens, generate_texture_slat=generate_texture_slat, downsampling=downsampling, use_tiled=use_tiled_decoder)[0]         
         
-        return (mesh,)
+        vertices = mesh.vertices.cuda()
+        faces = mesh.faces.cuda()        
+       
+        # Build BVH for the current mesh to guide remeshing
+        print(f"Building BVH for current mesh...")
+        bvh = CuMesh.cuBVH(vertices, faces)           
+        bvh.vertices = vertices
+        bvh.faces = faces
+        
+        return (mesh, bvh,)        
 
 class Trellis2PostProcess2:
     @classmethod

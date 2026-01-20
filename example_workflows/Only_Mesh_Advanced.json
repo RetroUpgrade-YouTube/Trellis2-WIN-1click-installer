@@ -2,18 +2,18 @@
   "id": "440427ce-0c6a-4462-af51-639ed2f16dec",
   "revision": 0,
   "last_node_id": 47,
-  "last_link_id": 96,
+  "last_link_id": 97,
   "nodes": [
     {
       "id": 39,
       "type": "Trellis2LoadModel",
       "pos": [
-        172.34044277137122,
-        635.2670381050675
+        208.80858116092548,
+        764.3204896919602
       ],
       "size": [
-        301.7261859434295,
-        154
+        362.0625,
+        207.328125
       ],
       "flags": {},
       "order": 0,
@@ -46,12 +46,12 @@
       "id": 46,
       "type": "Trellis2Remesh",
       "pos": [
-        1000.0828330856959,
-        557.5238047089168
+        1212.5690815760913,
+        666.3753965376665
       ],
       "size": [
-        316.630859375,
-        154
+        379.9375,
+        258
       ],
       "flags": {},
       "order": 3,
@@ -61,6 +61,12 @@
           "name": "mesh",
           "type": "MESHWITHVOXEL",
           "link": 96
+        },
+        {
+          "name": "bvh",
+          "shape": 7,
+          "type": "BVH",
+          "link": 97
         }
       ],
       "outputs": [
@@ -83,19 +89,20 @@
         0,
         true,
         0.03,
-        "Auto"
+        "1024",
+        false
       ]
     },
     {
       "id": 10,
       "type": "Preview3D",
       "pos": [
-        1009.5641496496474,
-        763.6500296419599
+        1233.2530189158551,
+        977.7080746372958
       ],
       "size": [
-        626.8865556299502,
-        658.2643216794061
+        752.25,
+        759.90625
       ],
       "flags": {},
       "order": 7,
@@ -166,12 +173,12 @@
       "id": 43,
       "type": "Trellis2MeshWithVoxelToTrimesh",
       "pos": [
-        1648.0662046700654,
-        567.1377197654879
+        2000.6189247991788,
+        662.7892578479423
       ],
       "size": [
-        336.5202391989493,
-        26
+        403.8125,
+        82
       ],
       "flags": {},
       "order": 5,
@@ -198,18 +205,20 @@
         "Node name for S&R": "Trellis2MeshWithVoxelToTrimesh",
         "widget_ue_connectable": {}
       },
-      "widgets_values": []
+      "widgets_values": [
+        "90 degrees"
+      ]
     },
     {
       "id": 6,
       "type": "Trellis2LoadImageWithTransparency",
       "pos": [
-        134.7157262503816,
-        834.9720915725163
+        163.6589218491456,
+        1003.9664210429843
       ],
       "size": [
-        378.59551697974155,
-        463.3598024362732
+        454.3125,
+        526.03125
       ],
       "flags": {},
       "order": 1,
@@ -249,12 +258,12 @@
       "id": 45,
       "type": "Trellis2MeshWithVoxelAdvancedGenerator",
       "pos": [
-        561.6847153407034,
-        553.6781550684681
+        676.0217149241794,
+        666.4137496647667
       ],
       "size": [
-        413.1841796875,
-        510
+        495.8125,
+        866
       ],
       "flags": {},
       "order": 2,
@@ -278,6 +287,13 @@
           "links": [
             96
           ]
+        },
+        {
+          "name": "bvh",
+          "type": "BVH",
+          "links": [
+            97
+          ]
         }
       ],
       "properties": {
@@ -291,33 +307,40 @@
         "randomize",
         "1024_cascade",
         12,
-        7.5,
-        0.7,
-        5,
+        6.5,
+        0.2,
+        4,
         12,
-        7.5,
-        0.5,
+        6.5,
+        0.2,
+        4,
+        12,
         3,
-        12,
-        1,
-        0,
+        0.2,
         3,
         999999,
         4,
         32,
-        false
+        false,
+        0.1,
+        1,
+        0.1,
+        1,
+        0,
+        0.9,
+        true
       ]
     },
     {
       "id": 19,
       "type": "Trellis2ExportMesh",
       "pos": [
-        1678.2694956590033,
-        644.2707634178166
+        2029.882961421021,
+        799.5540829374695
       ],
       "size": [
-        270,
-        106
+        324,
+        146
       ],
       "flags": {},
       "order": 6,
@@ -354,12 +377,12 @@
       "id": 42,
       "type": "Trellis2SimplifyMesh",
       "pos": [
-        1351.9548131292695,
-        558.4851235990978
+        1627.8357522963076,
+        662.8758485543146
       ],
       "size": [
-        270,
-        82
+        324,
+        114
       ],
       "flags": {},
       "order": 4,
@@ -387,7 +410,7 @@
         "widget_ue_connectable": {}
       },
       "widgets_values": [
-        1000000,
+        2000000,
         "Cumesh"
       ]
     }
@@ -448,22 +471,30 @@
       46,
       0,
       "MESHWITHVOXEL"
+    ],
+    [
+      97,
+      45,
+      1,
+      46,
+      1,
+      "BVH"
     ]
   ],
   "groups": [],
   "config": {},
   "extra": {
-    "workflowRendererVersion": "LG",
+    "workflowRendererVersion": "Vue",
     "ue_links": [],
     "ds": {
-      "scale": 0.6934334949441419,
+      "scale": 0.5730855330116876,
       "offset": [
-        110.3338509718548,
-        -269.10395450061213
+        147.20040183507447,
+        -240.52398363425573
       ]
     },
     "links_added_by_ue": [],
-    "frontendVersion": "1.35.9",
+    "frontendVersion": "1.37.11",
     "VHS_latentpreview": false,
     "VHS_latentpreviewrate": 0,
     "VHS_MetadataImage": true,

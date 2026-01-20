@@ -450,7 +450,44 @@ class Trellis2SimplifyMesh:
         else:
             raise Exception("Unknown simplification method")             
         
-        return (mesh_copy,)          
+        return (mesh_copy,)     
+
+class Trellis2SimplifyTrimesh:
+    @classmethod
+    def INPUT_TYPES(s):
+        return {
+            "required": {
+                "trimesh": ("TRIMESH",),
+                "target_face_num": ("INT",{"default":1000000,"min":1,"max":30000000}),
+                "method": (["Cumesh","Meshlib"],{"default":"Cumesh"}),
+            },
+        }
+
+    RETURN_TYPES = ("TRIMESH", )
+    RETURN_NAMES = ("trimesh", )
+    FUNCTION = "process"
+    CATEGORY = "Trellis2Wrapper"
+    OUTPUT_NODE = True
+
+    def process(self, trimesh, target_face_num, method):        
+        mesh_copy = copy.deepcopy(trimesh)
+        if method=="Cumesh":
+            cumesh = CuMesh.CuMesh()
+            cumesh.init(torch.from_numpy(mesh_copy.vertices).float().cuda(), torch.from_numpy(mesh_copy.faces).int().cuda())
+            cumesh.simplify(target_face_num, verbose=True)
+            new_vertices, new_faces = cumesh.read()
+            mesh_copy.vertices = new_vertices.cpu().numpy()
+            mesh_copy.faces = new_faces.cpu().numpy()
+            
+            del cumesh
+        elif method=="Meshlib":
+            new_vertices, new_faces = simplify_with_meshlib(mesh_copy.vertices, mesh_copy.faces, target = target_face_num)
+            mesh_copy.vertices = new_vertices
+            mesh_copy.faces = new_faces
+        else:
+            raise Exception("Unknown simplification method")             
+        
+        return (mesh_copy,)         
         
 class Trellis2MeshWithVoxelToTrimesh:
     @classmethod
@@ -1861,6 +1898,7 @@ NODE_CLASS_MAPPINGS = {
     "Trellis2PostProcess2": Trellis2PostProcess2,
     "Trellis2OvoxelExportToGLB": Trellis2OvoxelExportToGLB,
     "Trellis2TrimeshToMeshWithVoxel": Trellis2TrimeshToMeshWithVoxel,
+    "Trellis2SimplifyTrimesh": Trellis2SimplifyTrimesh,
     }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
@@ -1882,4 +1920,5 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "Trellis2PostProcess2": "Trellis2 - PostProcess Mesh 2",
     "Trellis2OvoxelExportToGLB": "Trellis2 - Ovoxel Export to GLB",
     "Trellis2TrimeshToMeshWithVoxel": "Trellis2 - Trimesh to Mesh with Voxel",
+    "Trellis2SimplifyTrimesh": "Trellis2 - Simplify Trimesh",
     }

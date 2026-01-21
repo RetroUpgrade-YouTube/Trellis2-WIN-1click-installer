@@ -20,8 +20,12 @@ import cumesh
 import nvdiffrast.torch as dr
 import cv2
 import flex_gemm
+from flex_gemm.ops.grid_sample import grid_sample_3d
 
 from comfy.utils import ProgressBar
+
+def pil2tensor(image):
+    return torch.from_numpy(np.array(image).astype(np.float32) / 255.0)[None,]
 
 class Trellis2ImageTo3DPipeline(Pipeline):
     """
@@ -1200,9 +1204,10 @@ class Trellis2ImageTo3DPipeline(Pipeline):
         resolution: int = 1024,
         texture_size: int = 1024,
         texture_alpha_mode = 'OPAQUE',
-        double_side_material = True
-    ):
-        
+        double_side_material = True,
+        bake_on_vertices = False,
+        use_custom_normals = False
+    ):        
         vertices = mesh.vertices
         faces = mesh.faces
         normals = np.asarray(mesh.vertex_normals).copy()
@@ -1227,6 +1232,10 @@ class Trellis2ImageTo3DPipeline(Pipeline):
                 return_vmaps=True,
                 verbose=True,
             )
+            
+            del _cumesh
+            gc.collect()      
+            
             vertices_torch = vertices_torch.cuda()
             faces_torch = faces_torch.cuda()
             uvs_torch = uvs_torch.cuda()
@@ -1234,6 +1243,108 @@ class Trellis2ImageTo3DPipeline(Pipeline):
             faces = faces_torch.cpu().numpy()
             uvs = uvs_torch.cpu().numpy()
             normals = normals[vmap.cpu().numpy()]
+
+        # --- Branch: Bake On Vertices (skip UV unwrapping and texture creation) ---
+        if bake_on_vertices:
+            aabb = [[-0.5, -0.5, -0.5], [0.5, 0.5, 0.5]]
+            
+            # --- Input Normalization (AABB, Voxel Size, Grid Size) ---
+            if isinstance(aabb, (list, tuple)):
+                aabb = np.array(aabb)
+            if isinstance(aabb, np.ndarray):
+                aabb = torch.tensor(aabb, dtype=torch.float32, device=pbr_voxel.coords.device)
+
+            voxel_size = 1 / resolution
+
+            # Calculate grid dimensions based on AABB and voxel size                
+            if voxel_size is not None:
+                if isinstance(voxel_size, float):
+                    voxel_size = [voxel_size, voxel_size, voxel_size]
+                if isinstance(voxel_size, (list, tuple)):
+                    voxel_size = np.array(voxel_size)
+                if isinstance(voxel_size, np.ndarray):
+                    voxel_size = torch.tensor(voxel_size, dtype=torch.float32, device=pbr_voxel.coords.device)
+                grid_size = ((aabb[1] - aabb[0]) / voxel_size).round().int()
+            else:
+                if isinstance(grid_size, int):
+                    grid_size = [grid_size, grid_size, grid_size]
+                if isinstance(grid_size, (list, tuple)):
+                    grid_size = np.array(grid_size)
+                if isinstance(grid_size, np.ndarray):
+                    grid_size = torch.tensor(grid_size, dtype=torch.int32, device=pbr_voxel.coords.device)
+                voxel_size = (aabb[1] - aabb[0]) / grid_size
+            
+            print('Baking colors on vertices...')
+            out_vertices = vertices_torch
+            out_faces = faces_torch
+            out_normals = normals           
+            
+            # Sample attributes directly at vertex positions from the voxel grid
+            # No BVH mapping needed - the voxel grid contains all the color information
+            vertex_attrs = grid_sample_3d(
+                pbr_voxel.feats,
+                pbr_voxel.coords,
+                shape=torch.Size([*pbr_voxel.shape, *pbr_voxel.spatial_shape]),
+                grid=((out_vertices - aabb[0]) / voxel_size).reshape(1, -1, 3),
+                mode='trilinear',
+            )
+            
+            # Extract base color and alpha per vertex (vertex_attrs shape: N_vertices x C)
+            base_color_idx = self.pbr_attr_layout['base_color']
+            alpha_idx = self.pbr_attr_layout['alpha']
+            
+            # Get RGB values and squeeze any extra dimensions to get (N, 3)
+            vertex_colors_rgb = vertex_attrs[..., base_color_idx].cpu().numpy()
+            vertex_colors_rgb = np.squeeze(vertex_colors_rgb)  # Remove batch dims if any
+            if vertex_colors_rgb.ndim == 1:
+                vertex_colors_rgb = vertex_colors_rgb[None, :]  # Ensure at least 2D
+            vertex_colors_rgb = np.clip(vertex_colors_rgb * 255, 0, 255).astype(np.uint8)
+            
+            # Handle alpha based on texture_alpha_mode
+            if texture_alpha_mode == "OPAQUE":
+                # For OPAQUE mode, use full alpha (255)
+                vertex_alpha = np.full((vertex_colors_rgb.shape[0], 1), 255, dtype=np.uint8)
+            else:
+                vertex_alpha = vertex_attrs[..., alpha_idx].cpu().numpy()
+                vertex_alpha = np.squeeze(vertex_alpha)  # Remove batch dims if any
+                vertex_alpha = np.clip(vertex_alpha * 255, 0, 255).astype(np.uint8)
+                # Ensure alpha is 2D with shape (N, 1)
+                if vertex_alpha.ndim == 1:
+                    vertex_alpha = vertex_alpha[:, None]
+            
+            # Combine into RGBA
+            vertex_colors_rgba = np.concatenate([vertex_colors_rgb, vertex_alpha], axis=-1)
+            
+            print("Finalizing mesh with vertex colors...")
+            
+            vertices_np = out_vertices.cpu().numpy()
+            faces_np = out_faces.cpu().numpy()
+            normals_np = out_normals
+            
+            # Swap Y and Z axes, invert Y (common conversion for GLB compatibility)
+            vertices_np[:, 1], vertices_np[:, 2] = vertices_np[:, 2].copy(), -vertices_np[:, 1].copy()
+            normals_np[:, 1], normals_np[:, 2] = normals_np[:, 2].copy(), -normals_np[:, 1].copy()
+            
+            # Create mesh with vertex colors using ColorVisuals
+            if use_custom_normals:
+                textured_mesh = trimesh.Trimesh(
+                    vertices=vertices_np,
+                    faces=faces_np,
+                    vertex_normals=normals_np,
+                    vertex_colors=vertex_colors_rgba,
+                    process=False,
+                )
+            else:
+                textured_mesh = trimesh.Trimesh(
+                    vertices=vertices_np,
+                    faces=faces_np,
+                    vertex_colors=vertex_colors_rgba,
+                    process=False,
+                )                
+            
+            # Return empty placeholder textures for vertex color mode
+            placeholder_texture = Image.new('RGBA', (1, 1), (0, 0, 0, 0))
+            return (textured_mesh, placeholder_texture, placeholder_texture,)
                 
         # rasterize
         print('Finalizing mesh ...')
@@ -1287,14 +1398,22 @@ class Trellis2ImageTo3DPipeline(Pipeline):
         normals[:, 1], normals[:, 2] = normals[:, 2], -normals[:, 1]
         uvs[:, 1] = 1 - uvs[:, 1] # Flip UV V-coordinate
         
-        textured_mesh = trimesh.Trimesh(
-            vertices=vertices,
-            faces=faces,
-            vertex_normals=normals,
-            process=False,
-            visual=trimesh.visual.TextureVisuals(uv=uvs, material=material)
-        )
-        
+        if use_custom_normals:
+            textured_mesh = trimesh.Trimesh(
+                vertices=vertices,
+                faces=faces,
+                vertex_normals=normals,
+                process=False,
+                visual=trimesh.visual.TextureVisuals(uv=uvs, material=material)
+            )
+        else:
+            textured_mesh = trimesh.Trimesh(
+                vertices=vertices,
+                faces=faces,
+                process=False,
+                visual=trimesh.visual.TextureVisuals(uv=uvs, material=material)
+            )
+            
         return textured_mesh, baseColorTexture, metallicRoughnessTexture
 
     @torch.no_grad()
@@ -1308,7 +1427,9 @@ class Trellis2ImageTo3DPipeline(Pipeline):
         texture_size: int = 2048,
         texture_alpha_mode = 'OPAQUE',
         double_side_material = True,
-        max_views = 4
+        max_views = 4,
+        bake_on_vertices = False,
+        use_custom_normals = False,
     ):
         mesh = self.preprocess_mesh(mesh)
         torch.manual_seed(seed)
@@ -1358,7 +1479,7 @@ class Trellis2ImageTo3DPipeline(Pipeline):
         pbr_voxel = self.decode_tex_slat(tex_slat)
         torch.cuda.empty_cache()
         
-        out_mesh, baseColorTexture, metallicRoughnessTexture = self.postprocess_mesh(mesh, pbr_voxel, resolution, texture_size, texture_alpha_mode, double_side_material)
+        out_mesh, baseColorTexture, metallicRoughnessTexture = self.postprocess_mesh(mesh, pbr_voxel, resolution, texture_size, texture_alpha_mode, double_side_material, bake_on_vertices, use_custom_normals)
         return out_mesh, baseColorTexture, metallicRoughnessTexture
     
     def get_coords_from_trimesh(self, mesh, resolution):

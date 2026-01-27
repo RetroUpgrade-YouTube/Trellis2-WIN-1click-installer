@@ -1967,10 +1967,14 @@ class Trellis2MeshRefiner:
         faces = mesh.faces.cuda()        
        
         # Build BVH for the current mesh to guide remeshing
-        print(f"Building BVH for current mesh...")
-        bvh = CuMesh.cuBVH(vertices, faces)           
-        bvh.vertices = vertices
-        bvh.faces = faces
+        if generate_texture_slat:
+            print("Building BVH for current mesh...")
+            bvh = CuMesh.cuBVH(vertices, faces)           
+            bvh.vertices = vertices
+            bvh.faces = faces
+        else:
+            print('Not building BVH, only used for texturing')
+            bvh = None
         
         return (mesh, bvh,)        
 

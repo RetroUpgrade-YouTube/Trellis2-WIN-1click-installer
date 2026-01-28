@@ -46,6 +46,16 @@ class AnyType(str):
 
 any = AnyType("*")
 
+def reset_cuda():
+    # Force garbage collection of Python objects
+    gc.collect()
+    
+    # Clear PyTorch CUDA cache
+    torch.cuda.empty_cache()
+    
+    # Synchronize to ensure all GPU operations complete
+    torch.cuda.synchronize()    
+
 def pil2tensor(image):
     return torch.from_numpy(np.array(image).astype(np.float32) / 255.0)[None,]
     
@@ -244,6 +254,8 @@ class Trellis2LoadModel:
         #os.environ["FLEX_GEMM_AUTOTUNER_VERBOSE"] = '1'        
         os.environ['ATTN_BACKEND'] = backend
         
+        reset_cuda()
+        
         torch.backends.cudnn.benchmark = False
         
         download_path = os.path.join(folder_paths.models_dir,"microsoft")
@@ -354,9 +366,9 @@ class Trellis2MeshWithVoxelGenerator:
         # Build BVH for the current mesh to guide remeshing
         if generate_texture_slat:
             print("Building BVH for current mesh...")
-            bvh = CuMesh.cuBVH(vertices, faces)           
-            bvh.vertices = vertices
-            bvh.faces = faces
+            bvh = CuMesh.cuBVH(vertices.detach().clone(), faces.detach().clone())           
+            bvh.vertices = vertices.detach().clone()
+            bvh.faces = faces.detach().clone()
         else:
             print("Not building BVH : only used for texturing")
             bvh = None        
@@ -1180,9 +1192,9 @@ class Trellis2MeshWithVoxelAdvancedGenerator:
         if generate_texture_slat:
             # Build BVH for the current mesh to guide remeshing
             print("Building BVH for current mesh...")
-            bvh = CuMesh.cuBVH(vertices, faces)           
-            bvh.vertices = vertices
-            bvh.faces = faces
+            bvh = CuMesh.cuBVH(vertices.detach().clone(), faces.detach().clone())           
+            bvh.vertices = vertices.detach().clone()
+            bvh.faces = faces.detach().clone()
         else:
             print("Not building BVH : only used for texturing")
             bvh = None
@@ -1349,7 +1361,7 @@ class Trellis2PostProcessAndUnWrapAndRasterizer:
                 band = remesh_band,
                 project_back = remesh_project, # Snaps vertices back to original surface
                 verbose = True,
-                bvh = bvh,
+                #bvh = bvh,
             ))
             
             print(f"After remeshing: {cumesh.num_vertices} vertices, {cumesh.num_faces} faces")
@@ -1666,8 +1678,8 @@ class Trellis2Remesh:
         gc.collect()         
             
         # Build BVH for the current mesh to guide remeshing
-        print(f"Building BVH for current mesh...")
-        bvh = CuMesh.cuBVH(vertices, faces)
+        #print(f"Building BVH for current mesh...")
+        #bvh = CuMesh.cuBVH(vertices.detach().clone(), faces.detach().clone())
             
         print("Cleaning mesh...")        
         center = aabb.mean(dim=0)
@@ -1689,7 +1701,7 @@ class Trellis2Remesh:
             band = remesh_band,
             project_back = remesh_project, # Snaps vertices back to original surface
             verbose = True,
-            bvh = bvh,
+            #bvh = bvh,
         )
         
         print(f"After remeshing: {len(vertices)} vertices, {len(faces)} faces")                                 
@@ -1969,9 +1981,9 @@ class Trellis2MeshRefiner:
         # Build BVH for the current mesh to guide remeshing
         if generate_texture_slat:
             print("Building BVH for current mesh...")
-            bvh = CuMesh.cuBVH(vertices, faces)           
-            bvh.vertices = vertices
-            bvh.faces = faces
+            bvh = CuMesh.cuBVH(vertices.detach().clone(), faces.detach().clone())           
+            bvh.vertices = vertices.detach().clone()
+            bvh.faces = faces.detach().clone()
         else:
             print('Not building BVH, only used for texturing')
             bvh = None
@@ -2158,8 +2170,79 @@ class Trellis2Continue:
     OUTPUT_NODE = True
 
     def process(self, input_1, input_2):        
-        return (input_1, input_2,)       
+        return (input_1, input_2,)
+        
+class Trellis2MeshWithVoxelToMeshlibMesh:
+    @classmethod
+    def INPUT_TYPES(s):
+        return {
+            "required": {
+                "mesh": ("MESHWITHVOXEL",),
+            },
+        }
 
+    RETURN_TYPES = ("MESHLIB_MESH", )
+    RETURN_NAMES = ("meshlib_mesh",)
+    FUNCTION = "process"
+    CATEGORY = "Trellis2Wrapper"
+    OUTPUT_NODE = True
+
+    def process(self, mesh):        
+        meshlib_mesh = mrmeshnumpy.meshFromFacesVerts(mesh.faces.cpu().numpy(), mesh.vertices.cpu().numpy())                                 
+        return (meshlib_mesh,)
+
+class Trellis2FillHolesWithMeshlib:
+    """Fill all holes in a mesh"""
+    
+    @classmethod
+    def INPUT_TYPES(s):
+        return {
+            "required": {
+                "mesh": ("MESHWITHVOXEL",),
+            },
+        }
+    
+    RETURN_TYPES = ("MESHWITHVOXEL", "INT")
+    RETURN_NAMES = ("mesh", "holes_filled")
+    FUNCTION = "process"
+    CATEGORY = "Trellis2Wrapper"
+    DESCRIPTION = "Fill all holes in a mesh using optimal triangulation."
+
+    def process(self, mesh):
+        import meshlib.mrmeshpy as mrmeshpy
+        
+        mesh_copy = copy.deepcopy(mesh)
+        mesh = mrmeshnumpy.meshFromFacesVerts(mesh_copy.faces.detach().clone().cpu().numpy(), mesh_copy.vertices.detach().clone().cpu().numpy())
+        
+        hole_edges = mesh.topology.findHoleRepresentiveEdges()
+        holes_filled = 0
+        
+        nb_holes = len(hole_edges)
+        print(f"{nb_holes} holes found")
+        
+        if nb_holes>0:
+            progress_bar = tqdm(total=nb_holes,desc="Filling holes")
+            pbar = ProgressBar(nb_holes)
+            
+            for e in hole_edges:
+                params = mrmeshpy.FillHoleParams()
+                params.metric = mrmeshpy.getUniversalMetric(mesh)
+                mrmeshpy.fillHole(mesh, e, params)
+                holes_filled += 1
+                progress_bar.update(1)
+                pbar.update(1)
+        
+        new_vertices = mrmeshnumpy.getNumpyVerts(mesh)
+        new_faces = mrmeshnumpy.getNumpyFaces(mesh.topology)
+
+        del mesh
+        gc.collect()
+        
+        mesh_copy.vertices = torch.from_numpy(new_vertices).float().to(mesh_copy.device)
+        mesh_copy.faces = torch.from_numpy(new_faces).int().to(mesh_copy.device)
+        
+        return (mesh_copy, holes_filled)        
+        
 NODE_CLASS_MAPPINGS = {
     "Trellis2LoadModel": Trellis2LoadModel,
     "Trellis2MeshWithVoxelGenerator": Trellis2MeshWithVoxelGenerator,
@@ -2183,6 +2266,8 @@ NODE_CLASS_MAPPINGS = {
     "Trellis2Continue": Trellis2Continue,
     "Trellis2ProgressiveSimplify": Trellis2ProgressiveSimplify,
     "Trellis2ReconstructMesh": Trellis2ReconstructMesh,
+    "Trellis2MeshWithVoxelToMeshlibMesh": Trellis2MeshWithVoxelToMeshlibMesh,
+    "Trellis2FillHolesWithMeshlib": Trellis2FillHolesWithMeshlib,
     }
     
 
@@ -2209,4 +2294,6 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "Trellis2Continue": "Trellis2 - Continue",
     "Trellis2ProgressiveSimplify": "Trellis2 - Progressive Simplify",
     "Trellis2ReconstructMesh": "Trellis2 - Reconstruct Mesh",
+    "Trellis2MeshWithVoxelToMeshlibMesh": "Trellis2 - Mesh with Voxel to Meshlib Mesh",
+    "Trellis2FillHolesWithMeshlib": "Trellis2 - Fill Holes with Meshlib",
     }

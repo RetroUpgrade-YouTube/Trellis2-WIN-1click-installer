@@ -12,23 +12,28 @@
 
 ## 📋 Changelog
 
-| Date &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; | Description |
+| Date | Description |
 | --- | --- |
-|**2026-01-30**| Updated Cumesh, updated nodes, updated workflows|
+| **2026-01-30** | Updated Cumesh, updated nodes, updated workflows|
 ||PostProcess UnWrap and Rasterize : removed fill_holes_max_perimeter -> using fill holes from Meshlib|
 ||Remesh : added "remove_inner_faces" -> same algorithm as "Reconstruct Mesh"|
 ||Mesh Texturing: added "mesh_cluster_threshold_cone_half_angle_rad"|
-|**2026-01-29**|Updated cumesh -> Remesh and Reconstruct made by chunk|
-|**2026-01-28**|Added the node "Fill Holes With Meshlib" + trying to fix caching issue|
-|**2026-01-27**|Added the node "Trellis2ReconstructMesh" + "Multiple Images" support for "Mesh Refiner" node|
-|**2026-01-21**|Added a "Continue" node (useful if you want to wait 2 things to be done in a specific order)|
-||Added the option "bake_on_vertices" for "Mesh Texturing" node + Added "padding" option for "Preprocess Image" node|
-|**2026-01-20**|Added node "Simplify Trimesh"|
+| **2026-01-29** |Updated cumesh -> Remesh and Reconstruct made by chunk|
+| **2026-01-28** |Added the node "Fill Holes With Meshlib"|
+||Trying to fix caching issue|
+| **2026-01-27** |Added the node "Trellis2ReconstructMesh"|
+||"Multiple Images" support for "Mesh Refiner" node|
+| **2026-01-21** |Added a "Continue" node|
+||Added the option "bake_on_vertices" for "Mesh Texturing" node|
+||Added "padding" option for "Preprocess Image" node|
+| **2026-01-20** |Added node "Simplify Trimesh"|
 ||Fixed crash with "remove_infinite_vertices" in "PostProcess Mesh" node|
 ||Fixed texture generation|
-|**2026-01-19**|Updated Cumesh|
-|**2026-01-12**|Can pass multiple images to "Mesh Texturing" node (experimental) + applied latest fixes from Microsoft|
-|**2026-01-05**|Implemented "Tiled" Decoder + Updated Cumesh and O_voxel|
+| **2026-01-19** |Updated Cumesh|
+| **2026-01-12** |Can pass multiple images to "Mesh Texturing" node (experimental)|
+||Applied latest fixes from Microsoft|
+| **2026-01-05** |Implemented "Tiled" Decoder|
+||Updated Cumesh and O_voxel|
   
 ---
 

@@ -15,7 +15,7 @@
 | Date | Description |
 | --- | --- |
 | **2026-01-30** | Updated Cumesh, updated nodes, updated workflows|
-||PostProcess UnWrap and Rasterize : removed fill_holes_max_perimeter -> using fill holes from Meshlib|
+||PostProcess UnWrap and Rasterize : removed fill_holes_max_perimeter <br> using fill holes from Meshlib|
 ||Remesh : added "remove_inner_faces" -> same algorithm as "Reconstruct Mesh"|
 ||Mesh Texturing: added "mesh_cluster_threshold_cone_half_angle_rad"|
 | **2026-01-29** |Updated cumesh -> Remesh and Reconstruct made by chunk|

@@ -362,6 +362,7 @@ class Trellis2MeshWithVoxelGenerator:
     OUTPUT_NODE = True
 
     def process(self, pipeline, image, seed, pipeline_type, sparse_structure_steps, shape_steps, texture_steps, max_num_tokens, max_views, sparse_structure_resolution, generate_texture_slat, use_tiled_decoder):
+        reset_cuda()
         images = tensor_batch_to_pil_list(image, max_views=max_views)
         image_in = images[0] if len(images) == 1 else images
         
@@ -1194,6 +1195,7 @@ class Trellis2MeshWithVoxelAdvancedGenerator:
         texture_guidance_interval_end,
         use_tiled_decoder):
 
+        reset_cuda()
         images = tensor_batch_to_pil_list(image, max_views=max_views)
         image_in = images[0] if len(images) == 1 else images
         

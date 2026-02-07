@@ -1682,6 +1682,8 @@ class Trellis2Remesh:
     OUTPUT_NODE = True
 
     def process(self, mesh, remesh_band, remesh_project, fill_holes, fill_holes_max_perimeter, dual_contouring_resolution, remove_floaters, remove_inner_faces):
+        reset_cuda()
+        
         mesh_copy = copy.deepcopy(mesh)
         
         if remove_floaters:
@@ -1798,6 +1800,8 @@ class Trellis2ReconstructMesh:
     OUTPUT_NODE = True
 
     def process(self, mesh, remesh_band, resolution):
+        reset_cuda()
+        
         mesh_copy = copy.deepcopy(mesh)
         
         vertices = mesh_copy.vertices.cuda()

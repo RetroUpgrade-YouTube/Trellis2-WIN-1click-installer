@@ -14,6 +14,7 @@
 
 | Date | Description |
 | --- | --- |
+| **2026-02-07** | Updated Cumesh package<br>Improved "Remesh" node when removing inner layer|
 | **2026-02-02** | Added node "Smooth Normals"<br>Useful for "Low Poly" mesh to remove the "blocky" aspect|
 || Added "remove_background" parameter for "PreProcess Image" node<br>Using rembg package|
 | **2026-01-30** | Updated Cumesh, updated nodes, updated workflows|

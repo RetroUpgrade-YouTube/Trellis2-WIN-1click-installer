@@ -7,6 +7,11 @@ import numpy as np
 import json
 import trimesh as Trimesh
 from tqdm import tqdm
+import time
+import shutil
+import uuid
+import triton
+import triton.compiler
 
 import folder_paths
 import node_helpers
@@ -36,6 +41,10 @@ from .trellis2.representations import Mesh, MeshWithVoxel
 script_directory = os.path.dirname(os.path.abspath(__file__))
 comfy_path = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
 
+BASE_CACHE_DIR = Path(os.path.dirname(os.path.realpath(__file__))) / "triton_caches"
+os.environ["TRITON_ALWAYS_COMPILE"] = "1"
+os.environ["TORCHINDUCTOR_FORCE_DISABLE_CACHES"]="1"
+
 to_pil = transforms.ToPILImage()
 
 class AnyType(str):
@@ -45,6 +54,43 @@ class AnyType(str):
     return False
 
 any = AnyType("*")
+
+def rotate_triton_cache():
+    """
+    Creates a new cache directory and attempts to clean up old ones.
+    """
+    # 1. Create the base directory if it doesn't exist
+    BASE_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+
+    # 2. Generate a unique ID for this specific run
+    run_id = f"cache_{int(time.time())}_{uuid.uuid4().hex[:6]}"
+    new_cache_path = BASE_CACHE_DIR / run_id
+    new_cache_path.mkdir()
+
+    # 3. Point Triton to this NEW empty folder
+    # This forces a recompile without needing to delete the locked file immediately
+    os.environ["TRITON_CACHE_DIR"] = str(new_cache_path)
+    print(f"[TrellisNode] 🔄 Switched to fresh Triton cache: {new_cache_path.name}")
+
+    # 4. Garbage Collection: Try to delete OLD cache folders
+    # We wrap this in a try/except so if Windows locks a file, we just skip it
+    # and leave it for the next cleanup cycle.
+    cleanup_old_caches(current_active=new_cache_path)                
+
+def cleanup_old_caches(current_active):
+    """
+    Iterates through the cache folder and deletes anything that isn't the current active one.
+    If a file is locked by Windows, it silently fails and leaves it for later.
+    """
+    for item in BASE_CACHE_DIR.iterdir():
+        if item.is_dir() and item != current_active:
+            try:
+                shutil.rmtree(item)
+                print(f"[TrellisNode] 🧹 Cleaned up old cache: {item.name}")
+            except OSError:
+                # This is expected on Windows! The file is locked.
+                # We just ignore it and try again next time the node runs.
+                pass 
 
 def parse_string_to_int_list(number_string):
   """
@@ -68,15 +114,15 @@ def parse_string_to_int_list(number_string):
     print(f"Error converting string to integer: {e}. Please ensure all values are valid numbers.")
     return []
 
-def reset_cuda():
+def reset_cuda():    
+    # Synchronize to ensure all GPU operations complete
+    torch.cuda.synchronize()     
+    
     # Force garbage collection of Python objects
-    gc.collect()
+    gc.collect()    
     
     # Clear PyTorch CUDA cache
     torch.cuda.empty_cache()
-    
-    # Synchronize to ensure all GPU operations complete
-    torch.cuda.synchronize()    
 
 def pil2tensor(image):
     return torch.from_numpy(np.array(image).astype(np.float32) / 255.0)[None,]
@@ -385,6 +431,7 @@ class Trellis2MeshWithVoxelGenerator:
 
     def process(self, pipeline, image, seed, pipeline_type, sparse_structure_steps, shape_steps, texture_steps, max_num_tokens, max_views, sparse_structure_resolution, generate_texture_slat, use_tiled_decoder):
         reset_cuda()
+        
         images = tensor_batch_to_pil_list(image, max_views=max_views)
         image_in = images[0] if len(images) == 1 else images
         
@@ -675,7 +722,9 @@ class Trellis2MeshWithVoxelToTrimesh:
     OUTPUT_NODE = True
 
     def process(self, mesh, reorient_vertices):       
-        vertices_np = mesh.vertices.cpu().numpy()
+        mesh_copy = copy.deepcopy(mesh)
+        
+        vertices_np = mesh_copy.vertices.cpu().numpy()
         
         if reorient_vertices == '90 degrees':
             vertices_np[:, 1], vertices_np[:, 2] = vertices_np[:, 2], -vertices_np[:, 1]
@@ -684,7 +733,7 @@ class Trellis2MeshWithVoxelToTrimesh:
         
         trimesh = Trimesh.Trimesh(
             vertices=vertices_np,
-            faces=mesh.faces.cpu().numpy(),
+            faces=mesh_copy.faces.cpu().numpy(),
             process=False
         )
         
@@ -1074,6 +1123,8 @@ class Trellis2UnWrapAndRasterizer:
         orig_tri_verts = bvh.vertices[bvh.faces[face_id.long()]] # (N_new, 3, 3)
         valid_pos = (orig_tri_verts * uvw.unsqueeze(-1)).sum(dim=1)
         
+        torch.cuda.synchronize()
+        
         # Trilinear sampling from the attribute volume (Color, Material props)
         attrs = torch.zeros(texture_size, texture_size, attr_volume.shape[1], device='cuda')
         attrs[mask] = grid_sample_3d(
@@ -1215,9 +1266,10 @@ class Trellis2MeshWithVoxelAdvancedGenerator:
         shape_guidance_interval_end,
         texture_guidance_interval_start,
         texture_guidance_interval_end,
-        use_tiled_decoder):
-
+        use_tiled_decoder,
+        ):
         reset_cuda()
+        
         images = tensor_batch_to_pil_list(image, max_views=max_views)
         image_in = images[0] if len(images) == 1 else images
         
@@ -1251,7 +1303,7 @@ class Trellis2MeshWithVoxelAdvancedGenerator:
             print("Not building BVH : only used for texturing")
             bvh = None
         
-        return (mesh,bvh,)    
+        return (mesh,bvh,)         
 
 class Trellis2MeshWithVoxelMultiViewGenerator:
     @classmethod
@@ -1756,6 +1808,8 @@ class Trellis2PostProcessAndUnWrapAndRasterizer:
         orig_tri_verts = bvh.vertices[bvh.faces[face_id.long()]] # (N_new, 3, 3)
         valid_pos = (orig_tri_verts * uvw.unsqueeze(-1)).sum(dim=1)
         
+        torch.cuda.synchronize()
+        
         # Trilinear sampling from the attribute volume (Color, Material props)
         attrs = torch.zeros(texture_size, texture_size, attr_volume.shape[1], device='cuda')
         attrs[mask] = grid_sample_3d(
@@ -1966,7 +2020,7 @@ class Trellis2ReconstructMesh:
             "required": {
                 "mesh": ("MESHWITHVOXEL",),
                 "remesh_band": ("FLOAT",{"default":1.0}),
-                "resolution": ([128,256,512,1024,2048],{"default":512}),
+                "resolution": ([128,256,512,1024,2048],{"default":512}),             
             }
         }
 
@@ -1993,7 +2047,50 @@ class Trellis2ReconstructMesh:
         mesh_copy.vertices = vertices.to(mesh_copy.device)
         mesh_copy.faces = faces.to(mesh_copy.device) 
                 
-        return (mesh_copy,)        
+        return (mesh_copy,)   
+
+class Trellis2ReconstructMeshWithQuad:
+    @classmethod
+    def INPUT_TYPES(s):
+        return {
+            "required": {
+                "mesh": ("MESHWITHVOXEL",),
+                "remesh_band": ("FLOAT",{"default":1.0}),
+                "resolution": ([128,256,512,1024,2048],{"default":512}),
+                "remove_floaters": ("BOOLEAN",{"default":True}),
+                "remove_inner_faces": ("BOOLEAN",{"default":False}),                  
+            }
+        }
+
+    RETURN_TYPES = ("MESHWITHVOXEL",)
+    RETURN_NAMES = ("mesh",)
+    FUNCTION = "process"
+    CATEGORY = "Trellis2Wrapper"
+    OUTPUT_NODE = True
+
+    def process(self, mesh, remesh_band, resolution, remove_floaters, remove_inner_faces):
+        reset_cuda()
+        
+        mesh_copy = copy.deepcopy(mesh)
+        
+        vertices = mesh_copy.vertices.cuda()
+        faces = mesh_copy.faces.cuda()
+        
+        # Perform Dual Contouring remeshing (rebuilds topology)
+        print('Reconstructing mesh ...')
+        vertices, faces = CuMesh.remeshing.reconstruct_mesh_dc_quad(vertices, faces, resolution, verbose=True, remove_inner_faces = remove_inner_faces)
+        
+        if remove_floaters:
+            vertices, faces = remove_floater2(vertices.cpu().numpy(),faces.cpu().numpy())
+            vertices = torch.from_numpy(vertices).contiguous().float()
+            faces = torch.from_numpy(faces).contiguous().int()         
+        
+        print(f"After reconstruction: {len(vertices)} vertices, {len(faces)} faces")                                 
+        
+        mesh_copy.vertices = vertices.to(mesh_copy.device)
+        mesh_copy.faces = faces.to(mesh_copy.device) 
+                
+        return (mesh_copy,)         
         
 class Trellis2MeshTexturing:
     @classmethod
@@ -2321,6 +2418,8 @@ class Trellis2MeshRefiner:
         use_tiled_decoder,
         max_views):
 
+        reset_cuda()
+
         images = tensor_batch_to_pil_list(image, max_views=max_views)
         image_in = images[0] if len(images) == 1 else images
         
@@ -2392,7 +2491,7 @@ class Trellis2PostProcess2:
 
         if remove_duplicate_faces:
             print('Removing duplicate faces ...')
-            trimesh.remove_duplicate_faces()        
+            trimesh.update_faces(trimesh.unique_faces()) 
         
         if fill_holes:
             print('Filling holes ...')
@@ -2402,8 +2501,13 @@ class Trellis2PostProcess2:
             vertices_count = len(trimesh.vertices)
             trimesh.merge_vertices(digits_vertex=weld_vertices_digits)
             new_vertices_count = len(trimesh.vertices)
-            nb_vertices_removed = vertices_count - new_vertices_count
-            print(f"Weld Vertices: Removed {nb_vertices_removed} vertices")            
+            nb_vertices_removed = vertices_count - new_vertices_count            
+            faces_count = len(trimesh.faces)
+            trimesh.remove_unreferenced_vertices()
+            trimesh.update_faces(trimesh.nondegenerate_faces())
+            new_faces_count = len(trimesh.faces)
+            nb_faces_removed = faces_count - new_faces_count
+            print(f"Weld Vertices: Removed {nb_vertices_removed} vertices / {nb_faces_removed} faces")
         
         new_vertices = torch.from_numpy(trimesh.vertices).float()
         new_faces = torch.from_numpy(trimesh.faces).int()                
@@ -2927,9 +3031,14 @@ class Trellis2WeldVertices:
         new_mesh.merge_vertices(merge_tex=merge_texture, merge_norm=merge_normals, digits_vertex=digits, digits_norm=digits, digits_uv=digits)
         new_vertices_count = len(new_mesh.vertices)
         nb_vertices_removed = vertices_count - new_vertices_count
-        print(f"Weld Vertices: Removed {nb_vertices_removed} vertices")
+        faces_count = len(new_mesh.faces)
+        new_mesh.remove_unreferenced_vertices()
+        new_mesh.update_faces(new_mesh.nondegenerate_faces())
+        new_faces_count = len(new_mesh.faces)
+        nb_faces_removed = faces_count - new_faces_count
+        print(f"Weld Vertices: Removed {nb_vertices_removed} vertices / {nb_faces_removed} faces")
         
-        return (new_mesh,)         
+        return (new_mesh,)     
         
 NODE_CLASS_MAPPINGS = {
     "Trellis2LoadModel": Trellis2LoadModel,
@@ -2962,6 +3071,7 @@ NODE_CLASS_MAPPINGS = {
     "Trellis2MeshWithVoxelMultiViewGenerator": Trellis2MeshWithVoxelMultiViewGenerator,
     "Trellis2MeshTexturingMultiView": Trellis2MeshTexturingMultiView,
     "Trellis2WeldVertices": Trellis2WeldVertices,
+    "Trellis2ReconstructMeshWithQuad": Trellis2ReconstructMeshWithQuad,
     }
     
 
@@ -2996,4 +3106,5 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "Trellis2MeshWithVoxelMultiViewGenerator": "Trellis2 - Mesh With Voxel Multi-View Generator",
     "Trellis2MeshTexturingMultiView": "Trellis2 - Mesh Texturing Multi-View",
     "Trellis2WeldVertices": "Trellis2 - Weld Vertices",
+    "Trellis2ReconstructMeshWithQuad": "Trellis2 - Reconstruct Mesh With Quad",
     }

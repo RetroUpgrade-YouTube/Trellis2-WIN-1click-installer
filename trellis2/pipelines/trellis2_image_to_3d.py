@@ -22,10 +22,21 @@ import cv2
 import flex_gemm
 from flex_gemm.ops.grid_sample import grid_sample_3d
 
+import random
+
 from comfy.utils import ProgressBar
 
 def pil2tensor(image):
     return torch.from_numpy(np.array(image).astype(np.float32) / 255.0)[None,]
+
+def seed_all(seed: int = 0):
+    """
+    Set random seeds of all components.
+    """
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
 
 class Trellis2ImageTo3DPipeline(Pipeline):
     """
@@ -116,9 +127,9 @@ class Trellis2ImageTo3DPipeline(Pipeline):
         return {k: (v.cpu() if torch.is_tensor(v) else v) for k, v in cond.items()}
 
     def _cleanup_cuda(self):
-        import gc
         gc.collect()
         if torch.cuda.is_available():
+            torch.cuda.synchronize()
             torch.cuda.empty_cache()
 
     @classmethod
@@ -186,13 +197,13 @@ class Trellis2ImageTo3DPipeline(Pipeline):
     def unload_sparse_structure_model(self):
         if self.models['sparse_structure_flow_model']:
             del self.models['sparse_structure_flow_model']
-            self.models['sparse_structure_flow_model'] = None
-            gc.collect()
+            self.models['sparse_structure_flow_model'] = None            
             
         if self.models['sparse_structure_decoder']:
             del self.models['sparse_structure_decoder']
             self.models['sparse_structure_decoder'] = None
-            gc.collect()         
+        
+        self._cleanup_cuda()
             
     def load_image_cond_model(self):
         if self.image_cond_model is None:
@@ -203,8 +214,8 @@ class Trellis2ImageTo3DPipeline(Pipeline):
     def unload_image_cond_model(self):
         if self.image_cond_model is not None:
             del self.image_cond_model
-            self.image_cond_model = None
-            gc.collect()
+            self.image_cond_model = None            
+            self._cleanup_cuda()
             
     def load_shape_slat_flow_model_512(self):        
         if self.models['shape_slat_flow_model_512'] is None:
@@ -217,7 +228,7 @@ class Trellis2ImageTo3DPipeline(Pipeline):
         if self.models['shape_slat_flow_model_512'] is not None:
             del self.models['shape_slat_flow_model_512']
             self.models['shape_slat_flow_model_512'] = None
-            gc.collect()
+            self._cleanup_cuda()
             
     def load_tex_slat_flow_model_512(self):        
         if self.models['tex_slat_flow_model_512'] is None:
@@ -230,7 +241,7 @@ class Trellis2ImageTo3DPipeline(Pipeline):
         if self.models['tex_slat_flow_model_512'] is not None:
             del self.models['tex_slat_flow_model_512']
             self.models['tex_slat_flow_model_512'] = None
-            gc.collect() 
+            self._cleanup_cuda()
 
     def load_tex_slat_decoder(self):        
         if self.models['tex_slat_decoder'] is None:
@@ -245,7 +256,7 @@ class Trellis2ImageTo3DPipeline(Pipeline):
         if self.models['tex_slat_decoder'] is not None:
             del self.models['tex_slat_decoder']
             self.models['tex_slat_decoder'] = None
-            gc.collect()
+            self._cleanup_cuda()
             
     def load_shape_slat_decoder(self):        
         if self.models['shape_slat_decoder'] is None:
@@ -260,7 +271,7 @@ class Trellis2ImageTo3DPipeline(Pipeline):
         if self.models['shape_slat_decoder'] is not None:
             del self.models['shape_slat_decoder']
             self.models['shape_slat_decoder'] = None
-            gc.collect()         
+            self._cleanup_cuda()
 
     def load_shape_slat_flow_model_1024(self):        
         if self.models['shape_slat_flow_model_1024'] is None:
@@ -273,7 +284,7 @@ class Trellis2ImageTo3DPipeline(Pipeline):
         if self.models['shape_slat_flow_model_1024'] is not None:
             del self.models['shape_slat_flow_model_1024']
             self.models['shape_slat_flow_model_1024'] = None
-            gc.collect()   
+            self._cleanup_cuda()
 
     def load_tex_slat_flow_model_1024(self):        
         if self.models['tex_slat_flow_model_1024'] is None:
@@ -286,7 +297,7 @@ class Trellis2ImageTo3DPipeline(Pipeline):
         if self.models['tex_slat_flow_model_1024'] is not None:
             del self.models['tex_slat_flow_model_1024']
             self.models['tex_slat_flow_model_1024'] = None
-            gc.collect()      
+            self._cleanup_cuda()
 
     def load_shape_slat_encoder(self):        
         if self.models['shape_slat_encoder'] is None:
@@ -301,7 +312,7 @@ class Trellis2ImageTo3DPipeline(Pipeline):
         if self.models['shape_slat_encoder'] is not None:
             del self.models['shape_slat_encoder']
             self.models['shape_slat_encoder'] = None
-            gc.collect()               
+            self._cleanup_cuda()      
 
     def to(self, device: torch.device) -> None:
         self._device = device
@@ -689,7 +700,7 @@ class Trellis2ImageTo3DPipeline(Pipeline):
         if self.low_vram:
             self.models['shape_slat_decoder'].cpu()
             self.models['shape_slat_decoder'].low_vram = False
-            torch.cuda.empty_cache()                        
+            self._cleanup_cuda()                
         
         if not self.keep_models_loaded:        
             self.unload_shape_slat_decoder()
@@ -774,7 +785,7 @@ class Trellis2ImageTo3DPipeline(Pipeline):
         if self.low_vram:
             self.models['tex_slat_decoder'].cpu()
             self.models['tex_slat_decoder'].low_vram = False
-            torch.cuda.empty_cache()                                                            
+            self._cleanup_cuda()
         
         if not self.keep_models_loaded:
             self.unload_tex_slat_decoder()
@@ -902,7 +913,7 @@ class Trellis2ImageTo3DPipeline(Pipeline):
         if preprocess_image:
             images = [self.preprocess_image(im) for im in images]
             
-        torch.manual_seed(seed)
+        seed_all(seed)
         
         # Get Image Cond
         self.load_image_cond_model()        
@@ -1157,7 +1168,7 @@ class Trellis2ImageTo3DPipeline(Pipeline):
         if pipeline_type is None:
             pipeline_type = self.default_pipeline_type
         
-        torch.manual_seed(seed)
+        seed_all(seed)
         
         # Collect views
         views_dict = {'front': front}
@@ -1909,6 +1920,9 @@ class Trellis2ImageTo3DPipeline(Pipeline):
             ctx, uvs_torch, faces_torch,
             resolution=[texture_size, texture_size],
         )
+        
+        torch.cuda.synchronize()
+        
         mask = rast[0, ..., 3] > 0
         pos = dr.interpolate(vertices_torch.unsqueeze(0), rast, faces_torch)[0][0]
         
@@ -1920,6 +1934,8 @@ class Trellis2ImageTo3DPipeline(Pipeline):
             grid=((pos[mask] + 0.5) * resolution).reshape(1, -1, 3),
             mode='trilinear',
         )
+        
+        torch.cuda.synchronize()
         
         # construct mesh
         mask = mask.cpu().numpy()
@@ -1988,7 +2004,7 @@ class Trellis2ImageTo3DPipeline(Pipeline):
         mesh_cluster_threshold_cone_half_angle_rad=60.0
     ):
         mesh = self.preprocess_mesh(mesh)
-        torch.manual_seed(seed)
+        seed_all(seed)
         
         # Accept either a single PIL image or a list of PIL images (multi-view)
         if isinstance(image, (list, tuple)):
@@ -2061,7 +2077,7 @@ class Trellis2ImageTo3DPipeline(Pipeline):
         blend_temperature: float = 2.0,
     ):
         mesh = self.preprocess_mesh(mesh)
-        torch.manual_seed(seed)
+        seed_all(seed)
         
         self.load_image_cond_model()        
         # Collect views
@@ -2262,7 +2278,7 @@ class Trellis2ImageTo3DPipeline(Pipeline):
         max_views: int = 4,
     ):
         mesh = self.preprocess_mesh(mesh)
-        torch.manual_seed(seed)
+        seed_all(seed)
         
         self.load_image_cond_model()
         

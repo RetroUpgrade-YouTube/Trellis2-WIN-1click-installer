@@ -1121,7 +1121,7 @@ class Trellis2UnWrapAndRasterizer:
         # This corrects geometric errors introduced by simplification/remeshing
         _, face_id, uvw = bvh.unsigned_distance(valid_pos, return_uvw=True)
         orig_tri_verts = bvh.vertices[bvh.faces[face_id.long()]] # (N_new, 3, 3)
-        valid_pos = (orig_tri_verts * uvw.unsqueeze(-1)).sum(dim=1)
+        valid_pos = (orig_tri_verts * uvw.unsqueeze(-1)).sum(dim=1)        
         
         torch.cuda.synchronize()
         
@@ -1684,7 +1684,7 @@ class Trellis2PostProcessAndUnWrapAndRasterizer:
             # Map vertex positions back to original mesh for accurate attribute sampling
             # Use BVH to find the closest point on original mesh surface for more accurate colors
             _, face_id, uvw = bvh.unsigned_distance(out_vertices, return_uvw=True)
-            orig_tri_verts = vertices[faces[face_id.long()]]  # (N_verts, 3, 3)
+            orig_tri_verts = bvh.vertices[bvh.faces[face_id.long()]]  # (N_verts, 3, 3)
             mapped_pos = (orig_tri_verts * uvw.unsqueeze(-1)).sum(dim=1)
             
             # Sample attributes at mapped positions from the voxel grid
@@ -1806,7 +1806,7 @@ class Trellis2PostProcessAndUnWrapAndRasterizer:
         # This corrects geometric errors introduced by simplification/remeshing
         _, face_id, uvw = bvh.unsigned_distance(valid_pos, return_uvw=True)
         orig_tri_verts = bvh.vertices[bvh.faces[face_id.long()]] # (N_new, 3, 3)
-        valid_pos = (orig_tri_verts * uvw.unsqueeze(-1)).sum(dim=1)
+        valid_pos = (orig_tri_verts * uvw.unsqueeze(-1)).sum(dim=1)        
         
         torch.cuda.synchronize()
         

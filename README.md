@@ -86,7 +86,7 @@ echo.
 If you run ComfyUI from a Powershell script, add these lines before "python main.py":
 
 ```bash
-Write-Host "[1/2] Clearing TorchInductor Cache..."
+Write-Host "[1/2] Clearing Triton Cache..."
 # [1/2] Clearing Triton Cache
 if (Test-Path "$env:USERPROFILE\.triton") {
     Remove-Item -Path "$env:USERPROFILE\.triton" -Recurse -Force

@@ -53,61 +53,9 @@
 Many users reported that their is a bug with mesh generation like on this picture:
 <img width="666" height="752" alt="image" src="https://github.com/user-attachments/assets/ce11c61d-a1c2-40c9-a698-b6330dd19953" />
 
-Probably this bug comes from Triton Cache
+I did not find yet the root cause of this problem.
 
-I advice you to modify your .bat file that launches ComfyUI.
-
-Edit your .bat file and add these lines before your run "main.py" script:
-
-```bash
-@echo off
-
-echo [1/2] Clearing Triton Cache...
-if exist "%USERPROFILE%.triton" (
-    rmdir /s /q "%USERPROFILE%.triton"
-    echo Triton Cache removed.
-) else (
-    echo Triton Cache allready cleared - skipped.
-)
-
-echo [2/2] Clearing TorchInductor Cache...
-if exist "%TEMP%\torchinductor%USERNAME%" (
-    rmdir /s /q "%TEMP%\torchinductor%USERNAME%"
-    echo TorchInductor Cache removed.
-) else (
-    echo TorchInductor Cache not found - skipped.
-)
-
-echo.
-echo Caches cleared!
-echo.
-```
-
-If you run ComfyUI from a Powershell script, add these lines before "python main.py":
-
-```bash
-Write-Host "[1/2] Clearing Triton Cache..."
-# [1/2] Clearing Triton Cache
-if (Test-Path "$env:USERPROFILE\.triton") {
-    Remove-Item -Path "$env:USERPROFILE\.triton" -Recurse -Force
-    Write-Host "Triton Cache removed."
-}
-else {
-    Write-Host "Triton Cache already cleared - skipped."
-}
-
-Write-Host "[2/2] Clearing TorchInductor Cache..."
-# [2/2] Clearing TorchInductor Cache
-if (Test-Path "$env:TEMP\torchinductor_$env:USERNAME") {
-    Remove-Item -Path "$env:TEMP\torchinductor_$env:USERNAME" -Recurse -Force
-    Write-Host "TorchInductor Cache removed."
-}
-else {
-    Write-Host "TorchInductor Cache not found - skipped."
-}
-
-Write-Host "Cache Cleared."
-```
+For the moment, the only solution is to restart ComfyUI.
 
 ---
 ## REQUIREMENTS ##

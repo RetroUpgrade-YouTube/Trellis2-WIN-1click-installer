@@ -780,6 +780,7 @@ class Trellis2ImageTo3DPipeline(Pipeline):
         if subs is None:
             ret = self.models['tex_slat_decoder'](slat) * 0.5 + 0.5
         else:
+            slat.clear_spatial_cache()
             ret = self.models['tex_slat_decoder'](slat, guide_subs=subs) * 0.5 + 0.5
             
         if self.low_vram:

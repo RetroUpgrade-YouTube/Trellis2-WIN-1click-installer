@@ -5,3 +5,7 @@ FlexGEMM/*
 weights/*
 triton_cache/*
 triton_caches/*
+o-voxel/*
+.vs/*
+nvdiffrast/*
+nvdiffrec/*

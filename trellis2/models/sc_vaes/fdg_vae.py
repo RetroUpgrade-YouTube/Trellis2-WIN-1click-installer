@@ -82,6 +82,11 @@ class FlexiDualGridVaeDecoder(SparseUnetVaeDecoder):
         self.resolution = resolution
         
     def forward(self, x: sp.SparseTensor, gt_intersected: sp.SparseTensor = None, useTiled: bool = True, **kwargs):
+        # Clear stale spatial caches from any previous run.
+        # Since `replace()` propagates `_spatial_cache` by reference, neighbor maps
+        # built during run 1 would otherwise be reused (with wrong indices) in run 2,
+        # causing corrupted vertex positions ("infinite vertical lines" artifact).
+        x.clear_spatial_cache()
         decoded = super().forward(x, **kwargs)
         if self.training:
             h, subs_gt, subs = decoded

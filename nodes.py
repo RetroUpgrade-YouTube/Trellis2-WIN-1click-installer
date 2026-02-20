@@ -3039,7 +3039,37 @@ class Trellis2WeldVertices:
         nb_faces_removed = faces_count - new_faces_count
         print(f"Weld Vertices: Removed {nb_vertices_removed} vertices / {nb_faces_removed} faces")
         
-        return (new_mesh,)     
+        return (new_mesh,)   
+
+class Trellis2StringSelector:    
+    @classmethod
+    def INPUT_TYPES(s):
+        return {
+            "required": {
+                "strings": ("STRING",),
+                "index": ("INT",{"default":0,"min":0,"max":1000}),
+            },
+        }
+    
+    RETURN_TYPES = ("STRING",)
+    RETURN_NAMES = ("string",)
+    FUNCTION = "process"
+    CATEGORY = "Trellis2Wrapper"
+
+    def process(self, strings, index):
+        if isinstance(strings, list):
+            if len(strings) == 0:
+                string = ""
+            elif len(strings)<=index:
+                index = len(strings)-1
+                
+            string = strings[index]
+        elif isinstance(strings, str):
+            string = strings
+        else:
+            raise Exception("string must be a list of a string")            
+        
+        return (string,)          
         
 NODE_CLASS_MAPPINGS = {
     "Trellis2LoadModel": Trellis2LoadModel,
@@ -3073,6 +3103,7 @@ NODE_CLASS_MAPPINGS = {
     "Trellis2MeshTexturingMultiView": Trellis2MeshTexturingMultiView,
     "Trellis2WeldVertices": Trellis2WeldVertices,
     "Trellis2ReconstructMeshWithQuad": Trellis2ReconstructMeshWithQuad,
+    "Trellis2StringSelector": Trellis2StringSelector,
     }
     
 
@@ -3108,4 +3139,5 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "Trellis2MeshTexturingMultiView": "Trellis2 - Mesh Texturing Multi-View",
     "Trellis2WeldVertices": "Trellis2 - Weld Vertices",
     "Trellis2ReconstructMeshWithQuad": "Trellis2 - Reconstruct Mesh With Quad",
+    "Trellis2StringSelector": "Trellis2 - String Selector",
     }

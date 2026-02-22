@@ -319,7 +319,7 @@ class Trellis2LoadModel:
     def INPUT_TYPES(s):
         return {
             "required": {
-                "modelname": (["TRELLIS.2-4B"],),
+                "modelname": (["microsoft/TRELLIS.2-4B","visualbruno/TRELLIS.2-4B-FP8"],{"default":"microsoft/TRELLIS.2-4B"}),
                 "backend": (["flash_attn","xformers"],{"default":"xformers"}),
                 "device": (["cpu","cuda"],{"default":"cuda"}),
                 "low_vram": ("BOOLEAN",{"default":True}),
@@ -342,18 +342,15 @@ class Trellis2LoadModel:
         
         reset_cuda()
         
-        torch.backends.cudnn.benchmark = False
-        
-        download_path = os.path.join(folder_paths.models_dir,"microsoft")
-        model_path = os.path.join(download_path, modelname)
-        
-        hf_model_name = f"microsoft/{modelname}"
+        torch.backends.cudnn.benchmark = False        
+            
+        model_path = os.path.join(folder_paths.models_dir, modelname)
         
         if not os.path.exists(model_path):
             print(f"Downloading model to: {model_path}")
             from huggingface_hub import snapshot_download
             snapshot_download(
-                repo_id=hf_model_name,
+                repo_id=modelname,
                 local_dir=model_path,
                 local_dir_use_symlinks=False,
             )
@@ -390,7 +387,12 @@ class Trellis2LoadModel:
             else:
                 raise Exception("Cannot download Trellis-Image-Large file ss_dec_conv3d_16l8_fp16.safetensors")
         
-        pipeline = Trellis2ImageTo3DPipeline.from_pretrained(model_path, keep_models_loaded = keep_models_loaded)
+        if modelname == "visualbruno/TRELLIS.2-4B-FP8":
+            use_fp8 = True
+        else:
+            use_fp8 = False
+                
+        pipeline = Trellis2ImageTo3DPipeline.from_pretrained(model_path, keep_models_loaded = keep_models_loaded, use_fp8=use_fp8)
         pipeline.low_vram = low_vram
         
         if device=="cuda":

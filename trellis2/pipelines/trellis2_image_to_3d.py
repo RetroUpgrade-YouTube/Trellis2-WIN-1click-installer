@@ -133,13 +133,16 @@ class Trellis2ImageTo3DPipeline(Pipeline):
             torch.cuda.empty_cache()
 
     @classmethod
-    def from_pretrained(cls, path: str, config_file: str = "pipeline.json", keep_models_loaded = True) -> "Trellis2ImageTo3DPipeline":
+    def from_pretrained(cls, path: str, config_file: str = "pipeline.json", keep_models_loaded = True, use_fp8 = False) -> "Trellis2ImageTo3DPipeline":
         """
         Load a pretrained model.
 
         Args:
             path (str): The path to the model. Can be either local path or a Hugging Face repository.
         """
+        if use_fp8:
+            config_file = "pipeline_fp8.json"
+            
         pipeline = super().from_pretrained(path, config_file)
         args = pipeline._pretrained_args
 
@@ -173,6 +176,7 @@ class Trellis2ImageTo3DPipeline(Pipeline):
         pipeline.path = path
         pipeline.keep_models_loaded = keep_models_loaded
         pipeline.last_processing = ''
+        pipeline.use_fp8 = use_fp8
         
         pipeline._pretrained_args['models']['sparse_structure_decoder'] = os.path.join(folder_paths.models_dir,"microsoft","TRELLIS-image-large","ckpts","ss_dec_conv3d_16l8_fp16")
         facebook_model_path = os.path.join(folder_paths.models_dir,"facebook","dinov3-vitl16-pretrain-lvd1689m")
@@ -302,7 +306,10 @@ class Trellis2ImageTo3DPipeline(Pipeline):
     def load_shape_slat_encoder(self):        
         if self.models['shape_slat_encoder'] is None:
             print('Loading Shape Slat Encoder model ...')
-            self.models['shape_slat_encoder'] = models.from_pretrained(f"{self.path}/ckpts/shape_enc_next_dc_f16c32_fp16")
+            if getattr(self, 'use_fp8', False):
+                self.models['shape_slat_encoder'] = models.from_pretrained(f"{self.path}/ckpts_fp8/shape_enc_next_dc_f16c32_fp8") 
+            else:
+                self.models['shape_slat_encoder'] = models.from_pretrained(f"{self.path}/ckpts/shape_enc_next_dc_f16c32_fp16")
             self.models['shape_slat_encoder'].eval()
             self.models['shape_slat_encoder'].to(self._device)
             if hasattr(self.models['shape_slat_encoder'], 'low_vram'):

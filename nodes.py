@@ -1206,17 +1206,17 @@ class Trellis2MeshWithVoxelAdvancedGenerator:
                 "seed": ("INT", {"default": 12345, "min": 0, "max": 0x7fffffff}),
                 "pipeline_type": (["512","1024","1024_cascade","1536_cascade"],{"default":"1024_cascade"}),
                 "sparse_structure_steps": ("INT",{"default":12, "min":1, "max":100},),
-                "sparse_structure_guidance_strength": ("FLOAT",{"default":6.50}),
-                "sparse_structure_guidance_rescale": ("FLOAT",{"default":0.20}),
-                "sparse_structure_rescale_t": ("FLOAT",{"default":4.00}),
+                "sparse_structure_guidance_strength": ("FLOAT",{"default":6.50,"min":0.00,"max":99.99,"step":0.01}),
+                "sparse_structure_guidance_rescale": ("FLOAT",{"default":0.05,"min":0.00,"max":1.00,"step":0.01}),
+                "sparse_structure_rescale_t": ("FLOAT",{"default":4.00,"min":0.00,"max":9.99,"step":0.01}),
                 "shape_steps": ("INT",{"default":12, "min":1, "max":100},),
-                "shape_guidance_strength": ("FLOAT",{"default":6.50}),
-                "shape_guidance_rescale": ("FLOAT",{"default":0.20}),
-                "shape_rescale_t": ("FLOAT",{"default":4.00}),                
+                "shape_guidance_strength": ("FLOAT",{"default":6.50,"min":0.00,"max":99.99,"step":0.01}),
+                "shape_guidance_rescale": ("FLOAT",{"default":0.05,"min":0.00,"max":1.00,"step":0.01}),
+                "shape_rescale_t": ("FLOAT",{"default":4.00,"min":0.00,"max":9.99,"step":0.01}),                
                 "texture_steps": ("INT",{"default":12, "min":1, "max":100},),
-                "texture_guidance_strength": ("FLOAT",{"default":3.00}),
-                "texture_guidance_rescale": ("FLOAT",{"default":0.20}),
-                "texture_rescale_t": ("FLOAT",{"default":3.00}),                
+                "texture_guidance_strength": ("FLOAT",{"default":3.00,"min":0.00,"max":99.99,"step":0.01}),
+                "texture_guidance_rescale": ("FLOAT",{"default":0.20,"min":0.00,"max":1.00,"step":0.01}),
+                "texture_rescale_t": ("FLOAT",{"default":3.00,"min":0.00,"max":9.99,"step":0.01}),                
                 "max_num_tokens": ("INT",{"default":999999,"min":0,"max":999999}),
                 "max_views": ("INT", {"default": 4, "min": 1, "max": 16}),
                 "sparse_structure_resolution": ("INT", {"default":32,"min":8,"max":128,"step":8}),
@@ -1308,17 +1308,17 @@ class Trellis2MeshWithVoxelMultiViewGenerator:
                 "seed": ("INT", {"default": 12345, "min": 0, "max": 0x7fffffff}),
                 "pipeline_type": (["512","1024","1024_cascade","1536_cascade"],{"default":"1024_cascade"}),
                 "sparse_structure_steps": ("INT",{"default":12, "min":1, "max":100},),
-                "sparse_structure_guidance_strength": ("FLOAT",{"default":6.50}),
-                "sparse_structure_guidance_rescale": ("FLOAT",{"default":0.20}),
-                "sparse_structure_rescale_t": ("FLOAT",{"default":4.00}),
+                "sparse_structure_guidance_strength": ("FLOAT",{"default":6.50,"min":0.00,"max":99.99,"step":0.01}),
+                "sparse_structure_guidance_rescale": ("FLOAT",{"default":0.05,"min":0.00,"max":1.00,"step":0.01}),
+                "sparse_structure_rescale_t": ("FLOAT",{"default":4.00,"min":0.00,"max":9.99,"step":0.01}),
                 "shape_steps": ("INT",{"default":12, "min":1, "max":100},),
-                "shape_guidance_strength": ("FLOAT",{"default":6.50}),
-                "shape_guidance_rescale": ("FLOAT",{"default":0.20}),
-                "shape_rescale_t": ("FLOAT",{"default":4.00}),                
+                "shape_guidance_strength": ("FLOAT",{"default":6.50,"min":0.00,"max":99.99,"step":0.01}),
+                "shape_guidance_rescale": ("FLOAT",{"default":0.05,"min":0.00,"max":1.00,"step":0.01}),
+                "shape_rescale_t": ("FLOAT",{"default":4.00,"min":0.00,"max":9.99,"step":0.01}),                
                 "texture_steps": ("INT",{"default":12, "min":1, "max":100},),
-                "texture_guidance_strength": ("FLOAT",{"default":3.00}),
-                "texture_guidance_rescale": ("FLOAT",{"default":0.20}),
-                "texture_rescale_t": ("FLOAT",{"default":3.00}),                
+                "texture_guidance_strength": ("FLOAT",{"default":3.00,"min":0.00,"max":99.99,"step":0.01}),
+                "texture_guidance_rescale": ("FLOAT",{"default":0.20,"min":0.00,"max":1.00,"step":0.01}),
+                "texture_rescale_t": ("FLOAT",{"default":3.00,"min":0.00,"max":9.99,"step":0.01}),                 
                 "max_num_tokens": ("INT",{"default":999999,"min":0,"max":999999}),
                 "sparse_structure_resolution": ("INT", {"default":32,"min":8,"max":128,"step":8}),
                 "generate_texture_slat": ("BOOLEAN", {"default":True}),
@@ -3026,7 +3026,30 @@ class Trellis2StringSelector:
         else:
             raise Exception("string must be a list of a string")            
         
-        return (string,)          
+        return (string,)
+
+class Trellis2FillHolesWithCuMesh:
+    """Fill all holes in a mesh"""
+    
+    @classmethod
+    def INPUT_TYPES(s):
+        return {
+            "required": {
+                "mesh": ("MESHWITHVOXEL",),
+                "max_permieters": ("FLOAT",{"default":0.030,"min":0.001,"max":99.999,"step":0.001}),
+            },
+        }
+    
+    RETURN_TYPES = ("MESHWITHVOXEL",)
+    RETURN_NAMES = ("mesh",)
+    FUNCTION = "process"
+    CATEGORY = "Trellis2Wrapper"
+
+    def process(self, mesh, max_permieters):
+        mesh_copy = copy.deepcopy(mesh)
+        mesh_copy.fill_holes(max_hole_perimeter = max_permieters)
+        
+        return (mesh_copy,)         
         
 NODE_CLASS_MAPPINGS = {
     "Trellis2LoadModel": Trellis2LoadModel,
@@ -3061,6 +3084,7 @@ NODE_CLASS_MAPPINGS = {
     "Trellis2WeldVertices": Trellis2WeldVertices,
     "Trellis2ReconstructMeshWithQuad": Trellis2ReconstructMeshWithQuad,
     "Trellis2StringSelector": Trellis2StringSelector,
+    "Trellis2FillHolesWithCuMesh": Trellis2FillHolesWithCuMesh,
     }
     
 
@@ -3097,4 +3121,5 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "Trellis2WeldVertices": "Trellis2 - Weld Vertices",
     "Trellis2ReconstructMeshWithQuad": "Trellis2 - Reconstruct Mesh With Quad",
     "Trellis2StringSelector": "Trellis2 - String Selector",
+    "Trellis2FillHolesWithCuMesh": "Trellis2 - Fill Holes with CuMesh",
     }

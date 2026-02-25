@@ -42,8 +42,8 @@ script_directory = os.path.dirname(os.path.abspath(__file__))
 comfy_path = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
 
 BASE_CACHE_DIR = Path(os.path.dirname(os.path.realpath(__file__))) / "triton_caches"
-os.environ["TRITON_ALWAYS_COMPILE"] = "1"
-os.environ["TORCHINDUCTOR_FORCE_DISABLE_CACHES"]="1"
+#os.environ["TRITON_ALWAYS_COMPILE"] = "1"
+#os.environ["TORCHINDUCTOR_FORCE_DISABLE_CACHES"]="1"
 
 to_pil = transforms.ToPILImage()
 
@@ -752,8 +752,8 @@ class Trellis2ExportMesh:
             }
         }
 
-    RETURN_TYPES = ("STRING",)
-    RETURN_NAMES = ("glb_path",)
+    RETURN_TYPES = ("STRING","STRING",)
+    RETURN_NAMES = ("glb_path","relative_path",)
     FUNCTION = "process"
     CATEGORY = "Trellis2Wrapper"
     OUTPUT_NODE = True
@@ -774,7 +774,7 @@ class Trellis2ExportMesh:
             
         relative_path = Path(subfolder) / f'{filename}_{counter:05}_.{file_format}'
         
-        return (str(relative_path), )        
+        return (str(output_glb_path), str(relative_path), )        
         
 class Trellis2PostProcessMesh:
     @classmethod
@@ -2444,7 +2444,7 @@ class Trellis2PostProcess2:
         trimesh = Trimesh.Trimesh(vertices=vertices_np,faces=faces_np)
         
         print(f"Initial mesh: {len(trimesh.faces)} faces")
-        print(f"Is winding consistent? {trimesh.is_winding_consistent}")        
+        #print(f"Is winding consistent? {trimesh.is_winding_consistent}")        
         
         if fix_normals:
             print('Fixing normals ...')

@@ -14,6 +14,7 @@
 
 | Date | Description |
 | --- | --- |
+| **2026-02-26** | Added FP8 models<br>Added "sdpa" and "flash_attn_3" for the backend |
 | **2026-02-21** | Fixed "Vertical lines" bug |
 | **2026-02-17** | Disabled Triton Cache (trying to fix vertical lines bug)<br>Fixed "Weld Vertices"<br>Added "Reconstruct Mesh with Quad" node |
 | **2026-02-13** | Added the node "Weld Vertices"<br>Added the resolution 1536 for "Mesh Texturing" |

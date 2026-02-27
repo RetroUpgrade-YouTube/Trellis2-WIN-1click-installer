@@ -24,7 +24,13 @@ from flex_gemm.ops.grid_sample import grid_sample_3d
 
 import random
 
-from comfy.utils import ProgressBar
+class ProgressBar:
+    def __init__(self, total=1):
+        self.total = total
+        self.current = 0
+
+    def update(self, step=1):
+        self.current += step
 
 def pil2tensor(image):
     return torch.from_numpy(np.array(image).astype(np.float32) / 255.0)[None,]
